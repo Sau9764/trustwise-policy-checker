@@ -12,7 +12,7 @@
 const EventEmitter = require('events');
 const JudgeService = require('./JudgeService');
 const { createStrategy, getAvailableStrategies } = require('./AggregationStrategy');
-const { loadConfig, saveConfig } = require('../policy-config');
+const { loadConfig, saveConfig } = require('../config/policy-config');
 
 class PolicyEngine extends EventEmitter {
   constructor(options = {}) {

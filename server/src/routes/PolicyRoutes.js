@@ -24,23 +24,6 @@ const createPolicyRoutes = (policyEngine, options = {}) => {
   /**
    * POST /api/policy/evaluate
    * Evaluate content against the configured policy
-   * 
-   * Request body:
-   * {
-   *   "content": "Content to evaluate",
-   *   "policy": { ... } // Optional: override policy for this request
-   * }
-   * 
-   * Response:
-   * {
-   *   "policy_name": "content_safety_policy",
-   *   "final_verdict": "ALLOW" | "BLOCK" | "WARN" | "REDACT",
-   *   "passed": boolean,
-   *   "evaluated_at": "ISO timestamp",
-   *   "rule_results": [...],
-   *   "summary": {...},
-   *   "total_latency_ms": number
-   * }
    */
   router.post('/evaluate', async (req, res) => {
     try {
@@ -110,13 +93,6 @@ const createPolicyRoutes = (policyEngine, options = {}) => {
   /**
    * POST /api/policy/config
    * Update policy configuration
-   * 
-   * Request body: Partial configuration to merge
-   * {
-   *   "policy": { ... },
-   *   "judge": { ... },
-   *   "settings": { ... }
-   * }
    */
   router.post('/config', (req, res) => {
     try {
@@ -131,7 +107,6 @@ const createPolicyRoutes = (policyEngine, options = {}) => {
 
       // Validate policy section if provided
       if (newConfig.policy) {
-        // Merge with existing policy for validation
         const mergedPolicy = {
           ...policyEngine.getConfig().policy,
           ...newConfig.policy
@@ -225,11 +200,6 @@ const createPolicyRoutes = (policyEngine, options = {}) => {
   /**
    * POST /api/policy/validate
    * Validate a policy configuration without applying it
-   * 
-   * Request body:
-   * {
-   *   "policy": { ... }
-   * }
    */
   router.post('/validate', (req, res) => {
     try {

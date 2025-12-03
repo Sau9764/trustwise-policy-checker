@@ -1,0 +1,32 @@
+{
+  "name": "trustwise-server",
+  "version": "1.0.0",
+  "description": "Policy Engine with LLM Judges - Backend server for content moderation",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "node src/tests/PolicyEngine.test.js"
+  },
+  "keywords": [
+    "policy-engine",
+    "llm",
+    "content-moderation",
+    "openai",
+    "judges"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "openai": "^4.104.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

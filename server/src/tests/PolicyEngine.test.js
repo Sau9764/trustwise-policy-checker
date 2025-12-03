@@ -11,7 +11,7 @@
  * Run with: npm test
  */
 
-const PolicyEngine = require('../server/PolicyEngine');
+const PolicyEngine = require('../services/PolicyEngine');
 
 // Test utilities
 let testsPassed = 0;
@@ -25,12 +25,6 @@ const assert = (condition, message) => {
     testsFailed++;
     console.error(`✗ FAIL: ${message}`);
   }
-};
-
-const assertDeepEqual = (actual, expected, message) => {
-  const actualStr = JSON.stringify(actual);
-  const expectedStr = JSON.stringify(expected);
-  assert(actualStr === expectedStr, `${message} (expected: ${expectedStr}, got: ${actualStr})`);
 };
 
 // Mock logger to suppress output during tests
@@ -146,7 +140,7 @@ async function testWeightedPolicyPasses() {
   const weightedPolicy = {
     ...testPolicy,
     evaluation_strategy: 'weighted_threshold',
-    threshold: 0.6 // Lower threshold so weighted pass works
+    threshold: 0.6
   };
 
   const engine = new PolicyEngine({
@@ -154,7 +148,7 @@ async function testWeightedPolicyPasses() {
     mockMode: true,
     mockResponses: {
       rule_1: { verdict: 'PASS', confidence: 0.95, reasoning: 'Content is safe' },
-      rule_2: { verdict: 'FAIL', confidence: 0.80, reasoning: 'Slightly unprofessional' }, // Low weight rule fails
+      rule_2: { verdict: 'FAIL', confidence: 0.80, reasoning: 'Slightly unprofessional' },
       rule_3: { verdict: 'PASS', confidence: 0.85, reasoning: 'Content is appropriate' }
     }
   });
@@ -162,9 +156,6 @@ async function testWeightedPolicyPasses() {
   const content = 'This is mostly professional content with minor issues.';
   const verdict = await engine.evaluate(content, { policy: weightedPolicy });
 
-  // With weights: rule_1 (1.0) + rule_3 (0.8) = 1.8 passed
-  // Total weight: 1.0 + 0.5 + 0.8 = 2.3
-  // Score: 1.8 / 2.3 = ~0.78 which is > 0.6 threshold
   assert(verdict.final_verdict === 'ALLOW', 'Final verdict should be ALLOW');
   assert(verdict.passed === true, 'Passed should be true');
   assert(verdict.summary.strategy === 'weighted_threshold', 'Strategy should be weighted_threshold');
@@ -187,7 +178,7 @@ async function testLLMTimeout() {
     mockMode: true,
     mockResponses: {
       rule_1: { verdict: 'PASS', confidence: 0.95, reasoning: 'Content is safe' },
-      rule_2: { timeout: 100 }, // Simulate timeout
+      rule_2: { timeout: 100 },
       rule_3: { verdict: 'PASS', confidence: 0.85, reasoning: 'Content is appropriate' }
     }
   });
@@ -195,7 +186,6 @@ async function testLLMTimeout() {
   const content = 'This is test content for timeout handling.';
   const verdict = await engine.evaluate(content, { policy: testPolicy });
 
-  // Timeout should result in UNCERTAIN verdict for that rule
   const timeoutRule = verdict.rule_results.find(r => r.rule_id === 'rule_2');
   
   assert(timeoutRule.verdict === 'UNCERTAIN', 'Timed out rule should have UNCERTAIN verdict');
@@ -226,7 +216,6 @@ async function testUncertainVerdict() {
   const content = 'This is ambiguous content that is hard to evaluate.';
   const verdict = await engine.evaluate(content, { policy: testPolicy });
 
-  // With 'all' strategy, UNCERTAIN + PASSes should result in WARN (passes but with warning)
   assert(verdict.final_verdict === 'WARN', 'Final verdict should be WARN');
   assert(verdict.passed === true, 'Passed should be true (with caution)');
   assert(verdict.summary.uncertain === 1, 'Summary should show 1 uncertain');
@@ -240,7 +229,7 @@ async function testUncertainVerdict() {
 }
 
 /**
- * Additional Test: ANY strategy works correctly
+ * Test 6: ANY strategy works correctly
  */
 async function testAnyStrategy() {
   console.log('\n========================================');
@@ -275,7 +264,7 @@ async function testAnyStrategy() {
 }
 
 /**
- * Test validation
+ * Test 7: Policy validation
  */
 async function testPolicyValidation() {
   console.log('\n========================================');

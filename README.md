@@ -1,343 +1,278 @@
-# Trustwise - Policy Engine with LLM Judges
+# 🛡️ Trustwise - Policy Engine with LLM Judges
 
-A configurable Policy Engine that evaluates content against rules using LLM Judges. Each rule is evaluated by an OpenAI-powered LLM "Judge," which determines whether it passes, fails, or requires escalation.
+A configurable content moderation system that evaluates requests against rules using LLM-powered judges. Built with Node.js/Express backend and React/Vite frontend.
 
-## Features
+![License](https://img.shields.io/badge/license-ISC-blue.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)
 
-- **Configurable Policies**: Define policies with multiple rules in JSON format
-- **LLM Judges**: Each rule is evaluated by an OpenAI-powered LLM Judge
-- **Multiple Strategies**: Support for `all`, `any`, and `weighted_threshold` evaluation strategies
-- **Parallel Evaluation**: Rules are evaluated in parallel for faster results
-- **Retry & Timeout**: Built-in retry logic and configurable timeouts
-- **Hot Reload**: Configuration can be updated at runtime via API
-- **Mock Mode**: Built-in mock support for testing
-- **RESTful API**: Full REST API for integration
+## ✨ Features
 
-## Quick Start
+- **LLM-Powered Content Evaluation**: Uses OpenAI GPT models to intelligently evaluate content against defined rules
+- **Configurable Policies**: Define policies with multiple rules, actions, and evaluation strategies
+- **Multiple Evaluation Strategies**:
+  - `all` - All rules must pass for content to be allowed
+  - `any` - At least one rule must pass
+  - `weighted_threshold` - Weighted scoring system with configurable threshold
+- **Flexible Actions**: `allow`, `block`, `warn`, or `redact` based on rule outcomes
+- **Professional UI**: Modern dark-themed interface for policy management and content evaluation
+- **Real-time Evaluation**: Instant feedback with detailed verdict breakdown
+- **Runtime Policy Overrides**: Test different policies without permanent changes
 
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Configure Environment
-
-Copy the environment example file and add your OpenAI API key:
-
-```bash
-cp env.example .env
-```
-
-Edit `.env` and add your OpenAI API key:
+## 🏗️ Project Structure
 
 ```
-OPENAI_API_KEY=your_openai_api_key_here
+trustwise/
+├── server/                  # Backend API server
+│   ├── src/
+│   │   ├── config/         # Policy configuration files
+│   │   ├── engine/         # Engine initialization
+│   │   ├── routes/         # API routes
+│   │   ├── services/       # Core services (PolicyEngine, JudgeService)
+│   │   └── tests/          # Unit tests
+│   └── package.json
+├── client/                  # React frontend
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   ├── services/       # API service layer
+│   │   └── App.jsx         # Main application
+│   └── package.json
+├── package.json            # Root workspace config
+├── env.example             # Environment variables template
+└── README.md
 ```
 
-### 3. Start the Server
+## 🚀 Getting Started
 
-```bash
-npm start
+### Prerequisites
+
+- Node.js >= 18.0.0
+- npm or yarn
+- OpenAI API key
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd trustwise
+   ```
+
+2. **Install dependencies**
+   ```bash
+   # Install root dependencies
+   npm install
+   
+   # Install all workspace dependencies
+   npm run install:all
+   
+   # Or manually:
+   cd server && npm install
+   cd ../client && npm install
+   ```
+
+3. **Configure environment**
+   ```bash
+   # Copy environment template
+   cp env.example .env
+   
+   # Also copy to server directory
+   cp env.example server/.env
+   
+   # Edit .env and add your OpenAI API key
+   ```
+
+4. **Start development servers**
+   ```bash
+   # From root - starts both server and client
+   npm run dev
+   
+   # Or start individually:
+   npm run dev:server  # Backend on port 3002
+   npm run dev:client  # Frontend on port 5173
+   ```
+
+5. **Open the application**
+   - Frontend: http://localhost:5173
+   - Backend API: http://localhost:3002
+   - API Documentation: http://localhost:3002/api/docs
+
+## 📖 API Reference
+
+### Evaluate Content
+```http
+POST /api/policy/evaluate
+Content-Type: application/json
+
+{
+  "content": "Text to evaluate",
+  "policy": { /* optional policy override */ }
+}
 ```
 
-Or for development with auto-reload:
-
-```bash
-npm run dev
-```
-
-### 4. Test the API
-
-```bash
-curl -X POST http://localhost:3002/api/policy/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Hello, this is a test message for content moderation."
-  }'
-```
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | Server info and available endpoints |
-| GET | `/api/docs` | API documentation |
-| GET | `/health` | Health check |
-| POST | `/api/policy/evaluate` | Evaluate content against policy |
-| GET | `/api/policy/config` | Get current configuration |
-| POST | `/api/policy/config` | Update configuration |
-| POST | `/api/policy/config/reload` | Reload config from file |
-| GET | `/api/policy/health` | Detailed health check |
-| POST | `/api/policy/validate` | Validate a policy |
-| GET | `/api/policy/strategies` | List available strategies |
-| POST | `/api/policy/runtime` | Set runtime policy override |
-| DELETE | `/api/policy/runtime` | Clear runtime policy |
-
-## Evaluation Request
-
-```bash
-curl -X POST http://localhost:3002/api/policy/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Hello, this is a test message for content moderation."
-  }'
-```
-
-### With Custom Policy Override
-
-```bash
-curl -X POST http://localhost:3002/api/policy/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Content to evaluate",
-    "policy": {
-      "name": "custom_policy",
-      "version": "1.0",
-      "default_action": "block",
-      "rules": [
-        {
-          "id": "custom_rule",
-          "description": "Check for custom criteria",
-          "judge_prompt": "Does this content meet custom criteria?",
-          "on_fail": "block",
-          "weight": 1.0
-        }
-      ],
-      "evaluation_strategy": "all"
-    }
-  }'
-```
-
-## Response Format
-
+**Response:**
 ```json
 {
   "policy_name": "content_safety_policy",
+  "policy_version": "1.0",
   "final_verdict": "ALLOW",
   "passed": true,
-  "evaluated_at": "2024-01-15T10:30:00Z",
-  "rule_results": [
-    {
-      "rule_id": "no_hate_speech",
-      "verdict": "PASS",
-      "confidence": 0.95,
-      "reasoning": "No hate speech detected",
-      "action": "block",
-      "weight": 1.0,
-      "latency_ms": 234
-    }
-  ],
+  "evaluated_at": "2025-12-03T10:00:00.000Z",
+  "rule_results": [...],
   "summary": {
+    "strategy": "all",
     "total_rules": 3,
     "passed": 3,
     "failed": 0,
     "uncertain": 0,
-    "strategy": "all",
-    "reason": "All rules passed"
+    "reason": "All 3 rule(s) passed."
   },
-  "total_latency_ms": 892
+  "total_latency_ms": 1234
 }
 ```
 
-## Policy Configuration
+### Get Policy Configuration
+```http
+GET /api/policy/config
+```
 
-Policies are defined in `src/policy-config.json`:
+### Update Policy Configuration
+```http
+POST /api/policy/config
+Content-Type: application/json
+
+{
+  "policy": { /* policy object */ }
+}
+```
+
+### Validate Policy
+```http
+POST /api/policy/validate
+Content-Type: application/json
+
+{
+  "policy": { /* policy object */ }
+}
+```
+
+### Get Available Strategies
+```http
+GET /api/policy/strategies
+```
+
+### Health Check
+```http
+GET /api/policy/health
+```
+
+## 📋 Policy Configuration
+
+Policies are defined in JSON format:
 
 ```json
 {
-  "policy": {
-    "name": "content_safety_policy",
-    "version": "1.0",
-    "default_action": "block",
-    "rules": [
-      {
-        "id": "no_hate_speech",
-        "description": "Content must not contain hate speech or slurs",
-        "judge_prompt": "Does this content contain hate speech, slurs, or discriminatory language? Respond with PASS if clean, FAIL if violation found.",
-        "on_fail": "block",
-        "weight": 1.0
-      },
-      {
-        "id": "no_pii",
-        "description": "Content must not expose personal identifiable information",
-        "judge_prompt": "Does this content contain PII such as SSN, credit cards, phone numbers, or addresses? Respond PASS if none found, FAIL if PII detected.",
-        "on_fail": "redact",
-        "weight": 0.8
-      },
-      {
-        "id": "professional_tone",
-        "description": "Content should maintain professional tone",
-        "judge_prompt": "Is this content written in a professional, respectful tone? Respond PASS if professional, FAIL if unprofessional.",
-        "on_fail": "warn",
-        "weight": 0.5
-      }
-    ],
-    "evaluation_strategy": "all",
-    "threshold": 0.7
-  },
-  "judge": {
-    "model": "gpt-4o-mini",
-    "temperature": 0.1,
-    "maxTokens": 500,
-    "timeout": 30000,
-    "maxRetries": 3,
-    "retryDelay": 1000
-  },
-  "settings": {
-    "parallelEvaluation": true,
-    "debugLog": false,
-    "cacheResults": false
-  }
+  "name": "content_safety_policy",
+  "version": "1.0",
+  "default_action": "block",
+  "evaluation_strategy": "all",
+  "threshold": 0.7,
+  "rules": [
+    {
+      "id": "no_harmful_content",
+      "description": "Block content promoting harm",
+      "judge_prompt": "Evaluate if this content promotes violence or self-harm...",
+      "on_fail": "block",
+      "weight": 1.0
+    }
+  ]
 }
 ```
 
-## Evaluation Strategies
+### Evaluation Strategies
 
-| Strategy | Behavior |
-|----------|----------|
-| `all` | All rules must pass for content to be allowed |
-| `any` | At least one rule must pass for content to be allowed |
-| `weighted_threshold` | Weighted sum of passed rules must exceed threshold |
+| Strategy | Description |
+|----------|-------------|
+| `all` | All rules must pass (AND logic) |
+| `any` | At least one rule must pass (OR logic) |
+| `weighted_threshold` | Weighted sum must exceed threshold |
 
-### Strategy Examples
-
-**All Strategy (default)**: Every rule must pass.
-```json
-{
-  "evaluation_strategy": "all"
-}
-```
-
-**Any Strategy**: At least one rule must pass.
-```json
-{
-  "evaluation_strategy": "any"
-}
-```
-
-**Weighted Threshold**: Weighted score must exceed threshold.
-```json
-{
-  "evaluation_strategy": "weighted_threshold",
-  "threshold": 0.7
-}
-```
-
-## Verdicts and Actions
-
-### Verdicts (from LLM Judge)
-
-| Verdict | Description |
-|---------|-------------|
-| `PASS` | Content meets the rule criteria |
-| `FAIL` | Content violates the rule criteria |
-| `UNCERTAIN` | Cannot determine with confidence |
-
-### Final Actions
+### Actions
 
 | Action | Description |
 |--------|-------------|
-| `ALLOW` | Content is allowed |
-| `BLOCK` | Content is blocked |
-| `WARN` | Content is allowed with warning |
-| `REDACT` | Content should be redacted |
-| `ERROR` | Evaluation failed |
+| `allow` | Permit the content |
+| `block` | Reject the content |
+| `warn` | Allow with warning flag |
+| `redact` | Allow but mark for redaction |
 
-## Environment Variables
+### Verdicts
+
+| Verdict | Description |
+|---------|-------------|
+| `PASS` | Rule passed - content meets criteria |
+| `FAIL` | Rule failed - content violates criteria |
+| `UNCERTAIN` | Cannot determine with confidence |
+
+## 🎨 UI Features
+
+### Policy Panel (Left Column)
+- View current policy configuration
+- Edit policy name, rules, and settings
+- Add/remove evaluation rules
+- Configure evaluation strategy and thresholds
+- Real-time policy validation
+
+### Evaluation Panel (Right Column)
+- Input content for evaluation
+- Test with sample content presets
+- View detailed evaluation results
+- See individual rule verdicts with reasoning
+- Monitor latency and performance
+
+## 🧪 Testing
+
+Run the test suite:
+```bash
+npm test
+# or
+cd server && npm test
+```
+
+## 🔧 Development Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start both server and client in development mode |
+| `npm run dev:server` | Start only the backend server |
+| `npm run dev:client` | Start only the frontend client |
+| `npm start` | Start the backend server in production mode |
+| `npm run build` | Build the client for production |
+| `npm test` | Run backend tests |
+| `npm run install:all` | Install all workspace dependencies |
+| `npm run clean` | Remove all node_modules |
+
+## 🌐 Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | OpenAI API key (required) | - |
 | `PORT` | Server port | `3002` |
-| `POLICY_NAME` | Policy name override | From config |
-| `POLICY_DEFAULT_ACTION` | Default action override | `block` |
-| `POLICY_EVALUATION_STRATEGY` | Strategy override | `all` |
-| `POLICY_THRESHOLD` | Threshold override | `0.7` |
-| `POLICY_JUDGE_MODEL` | LLM model | `gpt-4o-mini` |
-| `POLICY_JUDGE_TIMEOUT` | Request timeout (ms) | `30000` |
-| `POLICY_PARALLEL_EVALUATION` | Enable parallel | `true` |
+| `OPENAI_MODEL` | OpenAI model | `gpt-4o-mini` |
+| `CLIENT_URL` | CORS origin for client | `http://localhost:5173` |
+| `VITE_API_BASE_URL` | Backend API URL (client) | `http://localhost:3002/api/policy` |
 
-## Testing
+## 🤝 Contributing
 
-Run the test suite:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-```bash
-npm test
-```
+## 📄 License
 
-The tests cover:
-1. All rules pass → ALLOW
-2. One critical rule fails → BLOCK  
-3. Weighted policy passes despite one failure
-4. LLM timeout handling
-5. UNCERTAIN verdict handling
-6. ANY strategy works correctly
-7. Policy validation
+This project is licensed under the ISC License.
 
-## Project Structure
+---
 
-```
-trustwise/
-├── server.js                      # Main server entry point
-├── package.json                   # Dependencies and scripts
-├── env.example                    # Environment variables template
-├── .gitignore                     # Git ignore file
-├── README.md                      # This documentation
-└── src/
-    ├── index.js                   # Module entry point
-    ├── policy-config.js           # Config loader
-    ├── policy-config.json         # Default configuration
-    ├── policy-config.default.json # Backup configuration
-    ├── server/
-    │   ├── PolicyEngine.js        # Main orchestrator
-    │   ├── JudgeService.js        # LLM Judge abstraction
-    │   └── AggregationStrategy.js # Strategy implementations
-    ├── routes/
-    │   └── PolicyRoutes.js        # REST API endpoints
-    └── tests/
-        └── PolicyEngine.test.js   # Unit tests
-```
-
-## Programmatic Usage
-
-You can also use the PolicyEngine programmatically:
-
-```javascript
-const { initialize, PolicyEngine } = require('./src');
-
-// Option 1: Use the initialize function
-const { policyEngine, routes } = initialize({ logger: console });
-
-// Evaluate content
-const verdict = await policyEngine.evaluate('Content to evaluate');
-console.log(verdict.final_verdict); // 'ALLOW', 'BLOCK', 'WARN', 'REDACT'
-
-// Option 2: Create PolicyEngine directly
-const engine = new PolicyEngine({
-  logger: console,
-  mockMode: false // set to true for testing
-});
-
-const result = await engine.evaluate('Some content');
-```
-
-### Mock Mode for Testing
-
-```javascript
-const engine = new PolicyEngine({
-  logger: console,
-  mockMode: true,
-  mockResponses: {
-    'rule_1': { verdict: 'PASS', confidence: 0.95, reasoning: 'Test pass' },
-    'rule_2': { verdict: 'FAIL', confidence: 0.90, reasoning: 'Test fail' }
-  }
-});
-
-const result = await engine.evaluate('Test content');
-```
-
-## License
-
-ISC
-
+Built with ❤️ using Node.js, Express, React, and OpenAI

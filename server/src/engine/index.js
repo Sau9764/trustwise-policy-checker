@@ -5,17 +5,17 @@
  * Supports multiple evaluation strategies: all, any, weighted_threshold
  */
 
-const PolicyEngine = require('./server/PolicyEngine');
-const JudgeService = require('./server/JudgeService');
+const PolicyEngine = require('../services/PolicyEngine');
+const JudgeService = require('../services/JudgeService');
 const { 
   createStrategy, 
   getAvailableStrategies,
   AllStrategy,
   AnyStrategy,
   WeightedThresholdStrategy 
-} = require('./server/AggregationStrategy');
-const { createPolicyRoutes } = require('./routes/PolicyRoutes');
-const { config, loadConfig, saveConfig } = require('./policy-config');
+} = require('../services/AggregationStrategy');
+const { createPolicyRoutes } = require('../routes/PolicyRoutes');
+const { config, loadConfig, saveConfig } = require('../config/policy-config');
 
 /**
  * Initialize the Policy Engine module
