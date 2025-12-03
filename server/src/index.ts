@@ -9,6 +9,7 @@ import 'dotenv/config';
 import express, { Request, Response, Application } from 'express';
 import cors from 'cors';
 import { initialize } from './engine';
+import { connectDatabase, getDatabaseStatus } from './config/database';
 
 const app: Application = express();
 
@@ -45,13 +46,17 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Initialize Policy Engine
-const { policyEngine, routes } = initialize({ logger: console });
+const { policyEngine, routes, historyRoutes } = initialize({ logger: console });
 
 // Mount Policy Engine routes
 app.use('/api/policy', routes);
 
+// Mount History routes
+app.use('/api/history', historyRoutes);
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
+  const dbStatus = getDatabaseStatus();
   res.json({
     name: 'Trustwise - Policy Engine with LLM Judges',
     version: '1.0.0',
@@ -62,7 +67,15 @@ app.get('/', (_req: Request, res: Response) => {
       updateConfig: 'POST /api/policy/config',
       reloadConfig: 'POST /api/policy/config/reload',
       health: 'GET /api/policy/health',
-      validate: 'POST /api/policy/validate'
+      validate: 'POST /api/policy/validate',
+      history: 'GET /api/history',
+      historyStats: 'GET /api/history/stats',
+      rerunEvaluation: 'POST /api/history/:id/rerun'
+    },
+    database: {
+      connected: dbStatus.connected,
+      host: dbStatus.host,
+      database: dbStatus.database,
     },
     documentation: '/api/docs'
   });
@@ -163,10 +176,23 @@ app.get('/health', async (_req: Request, res: Response) => {
 // Start server
 const PORT = process.env['PORT'] || 3002;
 
-app.listen(PORT, () => {
+const startServer = async () => {
   const openaiConfigured = !!process.env['OPENAI_API_KEY'];
   
-  console.log(`
+  // Connect to MongoDB (non-blocking - server starts even if MongoDB fails)
+  let mongoConnected = false;
+  try {
+    await connectDatabase({ logger: console });
+    mongoConnected = true;
+  } catch (error) {
+    const err = error as Error;
+    console.warn('\n⚠️  Warning: MongoDB connection failed:', err.message);
+    console.warn('   Evaluation history will not be saved.');
+    console.warn('   Make sure MongoDB is running on localhost:27017\n');
+  }
+
+  app.listen(PORT, () => {
+    console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║   Trustwise - Policy Engine with LLM Judges                ║
 ╠════════════════════════════════════════════════════════════╣
@@ -174,20 +200,25 @@ app.listen(PORT, () => {
 ║   URL: http://localhost:${PORT}/                              ║
 ║                                                            ║
 ║   OpenAI: ${openaiConfigured ? '[OK] Configured' : '[MISSING] Set OPENAI_API_KEY'}                       ║
+║   MongoDB: ${mongoConnected ? '[OK] Connected' : '[WARN] Not Connected'}                        ║
 ║                                                            ║
 ║   Endpoints:                                               ║
 ║   - POST /api/policy/evaluate  - Evaluate content          ║
 ║   - GET  /api/policy/config    - Get configuration         ║
 ║   - GET  /api/policy/health    - Health check              ║
+║   - GET  /api/history          - Evaluation history        ║
 ║   - GET  /api/docs             - API documentation         ║
 ╚════════════════════════════════════════════════════════════╝
-  `);
+    `);
 
-  if (!openaiConfigured) {
-    console.warn('\n⚠️  Warning: OPENAI_API_KEY is not set. LLM evaluation will fail.');
-    console.warn('   Copy .env.example to .env and add your OpenAI API key.\n');
-  }
-});
+    if (!openaiConfigured) {
+      console.warn('\n⚠️  Warning: OPENAI_API_KEY is not set. LLM evaluation will fail.');
+      console.warn('   Copy .env.example to .env and add your OpenAI API key.\n');
+    }
+  });
+};
+
+startServer();
 
 export default app;
 

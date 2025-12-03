@@ -3,6 +3,7 @@ import Header from './components/Header';
 import PolicyPanel from './components/PolicyPanel';
 import EvaluationPanel from './components/EvaluationPanel';
 import ResultsPanel from './components/ResultsPanel';
+import HistoryPanel from './components/HistoryPanel';
 import { fetchConfig, evaluateContent } from './services/api';
 import './App.css';
 
@@ -12,6 +13,7 @@ const App = () => {
   const [error, setError] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [evaluating, setEvaluating] = useState(false);
+  const [activeTab, setActiveTab] = useState('evaluate'); // 'evaluate' or 'history'
 
   useEffect(() => {
     loadConfig();
@@ -50,6 +52,11 @@ const App = () => {
     }
   };
 
+  const handleRerunResult = (result) => {
+    setEvaluationResult(result);
+    setActiveTab('evaluate'); // Switch to evaluate tab to show results
+  };
+
   if (loading) {
     return (
       <div className="app-container">
@@ -85,22 +92,47 @@ const App = () => {
     <div className="app-container">
       <Header />
       <main className="main-content">
-        <div className="panel-container">
-          {/* Column 1: Policy Configuration */}
-          <section className="panel policy-section">
-            <PolicyPanel config={config} onConfigUpdate={loadConfig} />
-          </section>
-
-          {/* Column 2: Evaluation & Results */}
-          <section className="panel evaluation-section">
-            <EvaluationPanel 
-              config={config}
-              onEvaluate={handleEvaluate}
-              evaluating={evaluating}
-            />
-            <ResultsPanel result={evaluationResult} />
-          </section>
+        {/* Tab Navigation */}
+        <div className="tab-navigation">
+          <button
+            className={`tab-btn ${activeTab === 'evaluate' ? 'active' : ''}`}
+            onClick={() => setActiveTab('evaluate')}
+          >
+            <span className="tab-icon">🔍</span>
+            Evaluate
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            <span className="tab-icon">📜</span>
+            History
+          </button>
         </div>
+
+        {/* Content Based on Active Tab */}
+        {activeTab === 'evaluate' ? (
+          <div className="panel-container">
+            {/* Column 1: Policy Configuration */}
+            <section className="panel policy-section">
+              <PolicyPanel config={config} onConfigUpdate={loadConfig} />
+            </section>
+
+            {/* Column 2: Evaluation & Results */}
+            <section className="panel evaluation-section">
+              <EvaluationPanel 
+                config={config}
+                onEvaluate={handleEvaluate}
+                evaluating={evaluating}
+              />
+              <ResultsPanel result={evaluationResult} />
+            </section>
+          </div>
+        ) : (
+          <div className="history-container">
+            <HistoryPanel onRerunResult={handleRerunResult} />
+          </div>
+        )}
       </main>
     </div>
   );

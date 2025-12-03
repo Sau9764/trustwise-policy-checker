@@ -20,16 +20,23 @@ import type {
   Policy,
   RuleInput
 } from '../types';
+import { HistoryService } from '../services/HistoryService';
+import { isDatabaseConnected } from '../config/database';
+
+export interface PolicyRoutesExtendedOptions extends PolicyRoutesOptions {
+  historyService?: HistoryService;
+}
 
 /**
  * Create policy routes
  */
 export const createPolicyRoutes = (
   policyEngine: PolicyEngineInterface,
-  options: PolicyRoutesOptions = {}
+  options: PolicyRoutesExtendedOptions = {}
 ): Router => {
   const router = Router();
   const logger: Logger = options.logger || console;
+  const historyService = options.historyService;
 
   /**
    * POST /api/policy/evaluate
@@ -66,9 +73,35 @@ export const createPolicyRoutes = (
         hasCustomPolicy: !!policy
       });
 
+      // Get the active policy for saving to history
+      const activePolicy = policy ? (policy as Policy) : policyEngine.getActivePolicy();
+      
       const verdict = await policyEngine.evaluate(content, { policy: policy as Policy });
 
-      res.json(verdict);
+      // Save to history if database is connected and historyService is available
+      let evaluationId: string | undefined;
+      if (historyService && isDatabaseConnected()) {
+        try {
+          const historyRecord = await historyService.create({
+            content,
+            policy: activePolicy,
+            result: verdict,
+          });
+          evaluationId = historyRecord.evaluationId;
+          logger.info('[PolicyRoutes] Evaluation saved to history', { evaluationId });
+        } catch (historyError) {
+          const hErr = historyError as Error;
+          logger.warn('[PolicyRoutes] Failed to save evaluation to history', {
+            error: hErr.message,
+          });
+          // Don't fail the request if history save fails
+        }
+      }
+
+      res.json({
+        ...verdict,
+        evaluationId,
+      });
 
     } catch (error) {
       const err = error as Error;
