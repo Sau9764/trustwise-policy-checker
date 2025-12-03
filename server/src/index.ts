@@ -10,8 +10,10 @@
 import 'dotenv/config';
 import express, { Request, Response, Application } from 'express';
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
 import { initialize } from './engine';
 import { connectDatabase, getDatabaseStatus } from './config/database';
+import { swaggerSpec } from './config/swagger';
 
 const app: Application = express();
 
@@ -46,6 +48,18 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Trustwise API Documentation',
+}));
+
+// Swagger JSON endpoint
+app.get('/api-docs.json', (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
 
 // Initialize Policy Engine (returns services and routes, but requires async init after DB connect)
 const { policyEngine, routes, historyRoutes, initializeAsync } = initialize({ logger: console });
@@ -95,7 +109,11 @@ app.get('/', (_req: Request, res: Response) => {
       host: dbStatus.host,
       database: dbStatus.database,
     },
-    documentation: '/api/docs'
+    documentation: {
+      swagger: '/api-docs',
+      json: '/api-docs.json',
+      legacy: '/api/docs'
+    }
   });
 });
 
@@ -303,7 +321,7 @@ const startServer = async () => {
 ║   - POST /api/policy/config    - Update configuration      ║
 ║   - GET  /api/policy/health    - Health check              ║
 ║   - GET  /api/history          - Evaluation history        ║
-║   - GET  /api/docs             - API documentation         ║
+║   - GET  /api-docs             - Swagger UI Documentation  ║
 ╚════════════════════════════════════════════════════════════╝
     `);
 
