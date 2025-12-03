@@ -1,0 +1,46 @@
+{
+  "policy": {
+    "name": "content_safety_policy",
+    "version": "1.0",
+    "default_action": "block",
+    "rules": [
+      {
+        "id": "no_hate_speech",
+        "description": "Content must not contain hate speech or slurs",
+        "judge_prompt": "Does this content contain hate speech, slurs, or discriminatory language? Respond with PASS if clean, FAIL if violation found.",
+        "on_fail": "block",
+        "weight": 1.0
+      },
+      {
+        "id": "no_pii",
+        "description": "Content must not expose personal identifiable information",
+        "judge_prompt": "Does this content contain PII such as SSN, credit cards, phone numbers, or addresses? Respond PASS if none found, FAIL if PII detected.",
+        "on_fail": "redact",
+        "weight": 0.8
+      },
+      {
+        "id": "professional_tone",
+        "description": "Content should maintain professional tone",
+        "judge_prompt": "Is this content written in a professional, respectful tone? Respond PASS if professional, FAIL if unprofessional.",
+        "on_fail": "warn",
+        "weight": 0.5
+      }
+    ],
+    "evaluation_strategy": "all",
+    "threshold": 0.7
+  },
+  "judge": {
+    "model": "gpt-4o-mini",
+    "temperature": 0.1,
+    "maxTokens": 500,
+    "timeout": 30000,
+    "maxRetries": 3,
+    "retryDelay": 1000
+  },
+  "settings": {
+    "parallelEvaluation": true,
+    "debugLog": false,
+    "cacheResults": false
+  }
+}
+
