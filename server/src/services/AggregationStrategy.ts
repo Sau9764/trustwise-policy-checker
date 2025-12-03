@@ -7,10 +7,21 @@
  * - weighted_threshold: Weighted sum of passed rules must exceed threshold
  */
 
+import type {
+  Logger,
+  RuleResult,
+  Policy,
+  AggregationResult,
+  AggregationStrategyInterface,
+  EvaluationStrategy,
+  FinalVerdict,
+  Action
+} from '../types';
+
 /**
  * Map of actions to final verdict priorities (higher = more severe)
  */
-const ACTION_PRIORITY = {
+export const ACTION_PRIORITY: Record<Action, number> = {
   block: 3,
   redact: 2,
   warn: 1,
@@ -20,28 +31,28 @@ const ACTION_PRIORITY = {
 /**
  * Base aggregation strategy class
  */
-class BaseStrategy {
-  constructor(logger) {
+export abstract class BaseStrategy implements AggregationStrategyInterface {
+  protected logger: Logger;
+
+  constructor(logger?: Logger) {
     this.logger = logger || console;
   }
 
   /**
    * Aggregate rule results into final verdict
-   * @param {Array} ruleResults - Array of rule evaluation results
-   * @param {Object} policy - Policy configuration
-   * @returns {Object} Aggregated verdict
+   * @param ruleResults - Array of rule evaluation results
+   * @param policy - Policy configuration
+   * @returns Aggregated verdict
    */
-  aggregate(ruleResults, policy) {
-    throw new Error('aggregate() must be implemented by subclass');
-  }
+  abstract aggregate(ruleResults: RuleResult[], policy: Policy): AggregationResult;
 
   /**
    * Determine final action based on rule results
    * @protected
    */
-  determineFinalAction(ruleResults, defaultAction) {
+  protected determineFinalAction(ruleResults: RuleResult[], defaultAction: Action): FinalVerdict {
     let highestPriority = ACTION_PRIORITY[defaultAction] || 0;
-    let finalAction = defaultAction;
+    let finalAction: Action = defaultAction;
 
     for (const result of ruleResults) {
       if (result.verdict === 'FAIL' && result.action) {
@@ -53,15 +64,15 @@ class BaseStrategy {
       }
     }
 
-    return finalAction.toUpperCase();
+    return finalAction.toUpperCase() as FinalVerdict;
   }
 }
 
 /**
  * ALL Strategy - All rules must pass
  */
-class AllStrategy extends BaseStrategy {
-  aggregate(ruleResults, policy) {
+export class AllStrategy extends BaseStrategy {
+  aggregate(ruleResults: RuleResult[], policy: Policy): AggregationResult {
     const failedRules = ruleResults.filter(r => r.verdict === 'FAIL');
     const uncertainRules = ruleResults.filter(r => r.verdict === 'UNCERTAIN');
     const passedRules = ruleResults.filter(r => r.verdict === 'PASS');
@@ -126,8 +137,8 @@ class AllStrategy extends BaseStrategy {
 /**
  * ANY Strategy - At least one rule must pass
  */
-class AnyStrategy extends BaseStrategy {
-  aggregate(ruleResults, policy) {
+export class AnyStrategy extends BaseStrategy {
+  aggregate(ruleResults: RuleResult[], policy: Policy): AggregationResult {
     const passedRules = ruleResults.filter(r => r.verdict === 'PASS');
     const failedRules = ruleResults.filter(r => r.verdict === 'FAIL');
     const uncertainRules = ruleResults.filter(r => r.verdict === 'UNCERTAIN');
@@ -192,15 +203,15 @@ class AnyStrategy extends BaseStrategy {
 /**
  * WEIGHTED_THRESHOLD Strategy - Weighted sum of passed rules must exceed threshold
  */
-class WeightedThresholdStrategy extends BaseStrategy {
-  aggregate(ruleResults, policy) {
+export class WeightedThresholdStrategy extends BaseStrategy {
+  aggregate(ruleResults: RuleResult[], policy: Policy): AggregationResult {
     const threshold = policy.threshold || 0.7;
     
     let totalWeight = 0;
     let passedWeight = 0;
-    const passedRules = [];
-    const failedRules = [];
-    const uncertainRules = [];
+    const passedRules: RuleResult[] = [];
+    const failedRules: RuleResult[] = [];
+    const uncertainRules: RuleResult[] = [];
 
     for (const result of ruleResults) {
       const weight = result.weight || 1.0;
@@ -270,12 +281,12 @@ class WeightedThresholdStrategy extends BaseStrategy {
 
 /**
  * Strategy factory - returns appropriate strategy instance
- * @param {string} strategyName - Name of strategy ('all', 'any', 'weighted_threshold')
- * @param {Object} logger - Logger instance
- * @returns {BaseStrategy} Strategy instance
+ * @param strategyName - Name of strategy ('all', 'any', 'weighted_threshold')
+ * @param logger - Logger instance
+ * @returns Strategy instance
  */
-const createStrategy = (strategyName, logger) => {
-  const strategies = {
+export const createStrategy = (strategyName: EvaluationStrategy, logger?: Logger): BaseStrategy => {
+  const strategies: Record<EvaluationStrategy, new (logger?: Logger) => BaseStrategy> = {
     all: AllStrategy,
     any: AnyStrategy,
     weighted_threshold: WeightedThresholdStrategy
@@ -292,20 +303,9 @@ const createStrategy = (strategyName, logger) => {
 
 /**
  * Get list of available strategies
- * @returns {Array<string>} Available strategy names
+ * @returns Available strategy names
  */
-const getAvailableStrategies = () => {
+export const getAvailableStrategies = (): EvaluationStrategy[] => {
   return ['all', 'any', 'weighted_threshold'];
 };
-
-module.exports = {
-  BaseStrategy,
-  AllStrategy,
-  AnyStrategy,
-  WeightedThresholdStrategy,
-  createStrategy,
-  getAvailableStrategies,
-  ACTION_PRIORITY
-};
-
 

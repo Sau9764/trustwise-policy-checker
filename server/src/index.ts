@@ -5,16 +5,15 @@
  * and LLM-powered rule evaluation.
  */
 
-require('dotenv').config();
+import 'dotenv/config';
+import express, { Request, Response, Application } from 'express';
+import cors from 'cors';
+import { initialize } from './engine';
 
-const express = require('express');
-const cors = require('cors');
-const { initialize } = require('./engine');
-
-const app = express();
+const app: Application = express();
 
 // Middleware - CORS configuration
-const allowedOrigins = [
+const allowedOrigins: string[] = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:5175',
@@ -23,8 +22,8 @@ const allowedOrigins = [
   'http://127.0.0.1:5175',
 ];
 
-if (process.env.CLIENT_URL) {
-  allowedOrigins.push(process.env.CLIENT_URL);
+if (process.env['CLIENT_URL']) {
+  allowedOrigins.push(process.env['CLIENT_URL']);
 }
 
 app.use(cors({
@@ -32,7 +31,7 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+    if (allowedOrigins.includes(origin) || process.env['NODE_ENV'] === 'development') {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -52,7 +51,7 @@ const { policyEngine, routes } = initialize({ logger: console });
 app.use('/api/policy', routes);
 
 // Root endpoint
-app.get('/', (req, res) => {
+app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'Trustwise - Policy Engine with LLM Judges',
     version: '1.0.0',
@@ -70,7 +69,7 @@ app.get('/', (req, res) => {
 });
 
 // API documentation endpoint
-app.get('/api/docs', (req, res) => {
+app.get('/api/docs', (_req: Request, res: Response) => {
   res.json({
     title: 'Trustwise Policy Engine API',
     version: '1.0.0',
@@ -147,24 +146,25 @@ app.get('/api/docs', (req, res) => {
 });
 
 // Health check endpoint (shortcut)
-app.get('/health', async (req, res) => {
+app.get('/health', async (_req: Request, res: Response) => {
   try {
     const health = await policyEngine.healthCheck();
     const statusCode = health.healthy ? 200 : 503;
     res.status(statusCode).json(health);
   } catch (error) {
+    const err = error as Error;
     res.status(503).json({
       healthy: false,
-      error: error.message
+      error: err.message
     });
   }
 });
 
 // Start server
-const PORT = process.env.PORT || 3002;
+const PORT = process.env['PORT'] || 3002;
 
 app.listen(PORT, () => {
-  const openaiConfigured = !!process.env.OPENAI_API_KEY;
+  const openaiConfigured = !!process.env['OPENAI_API_KEY'];
   
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
@@ -189,5 +189,5 @@ app.listen(PORT, () => {
   }
 });
 
-module.exports = app;
+export default app;
 

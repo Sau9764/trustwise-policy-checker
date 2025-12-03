@@ -9,13 +9,38 @@
  * - Event-driven for extensibility
  */
 
-const EventEmitter = require('events');
-const JudgeService = require('./JudgeService');
-const { createStrategy, getAvailableStrategies } = require('./AggregationStrategy');
-const { loadConfig, saveConfig } = require('../config/policy-config');
+import { EventEmitter } from 'events';
+import { JudgeService } from './JudgeService';
+import { createStrategy, getAvailableStrategies } from './AggregationStrategy';
+import { loadConfig, saveConfig } from '../config/policy-config';
+import type {
+  Logger,
+  Config,
+  Policy,
+  PolicyInput,
+  Rule,
+  RuleInput,
+  RuleResult,
+  PolicyVerdict,
+  PolicyEngineOptions,
+  EvaluateOptions,
+  MockResponses,
+  ValidationResult,
+  RuleOperationResult,
+  PolicyEngineHealthCheck,
+  EvaluationStrategy,
+  JudgeServiceInterface,
+  PolicyEngineInterface,
+  JudgeEvaluationResult
+} from '../types';
 
-class PolicyEngine extends EventEmitter {
-  constructor(options = {}) {
+export class PolicyEngine extends EventEmitter implements PolicyEngineInterface {
+  private logger: Logger;
+  private config: Config;
+  private judgeService: JudgeServiceInterface;
+  private runtimePolicy: Policy | null;
+
+  constructor(options: PolicyEngineOptions = {}) {
     super();
     this.logger = options.logger || console;
     
@@ -44,17 +69,15 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Get current active policy (runtime override or config)
-   * @returns {Object} Active policy configuration
    */
-  getActivePolicy() {
+  getActivePolicy(): Policy {
     return this.runtimePolicy || this.config.policy;
   }
 
   /**
    * Set runtime policy override
-   * @param {Object} policy - Policy configuration to use
    */
-  setRuntimePolicy(policy) {
+  setRuntimePolicy(policy: Policy): void {
     this.runtimePolicy = policy;
     this.logger.info('[PolicyEngine] Runtime policy set', {
       name: policy.name,
@@ -65,20 +88,15 @@ class PolicyEngine extends EventEmitter {
   /**
    * Clear runtime policy override (revert to config)
    */
-  clearRuntimePolicy() {
+  clearRuntimePolicy(): void {
     this.runtimePolicy = null;
     this.logger.info('[PolicyEngine] Runtime policy cleared, using config policy');
   }
 
   /**
    * Evaluate content against the active policy
-   * 
-   * @param {string} content - Content to evaluate
-   * @param {Object} options - Evaluation options
-   * @param {Object} options.policy - Optional policy override for this evaluation
-   * @returns {Promise<Object>} Structured verdict object
    */
-  async evaluate(content, options = {}) {
+  async evaluate(content: string, options: EvaluateOptions = {}): Promise<PolicyVerdict> {
     const startTime = Date.now();
     
     // Use provided policy, runtime policy, or config policy
@@ -109,7 +127,7 @@ class PolicyEngine extends EventEmitter {
       const totalLatency = Date.now() - startTime;
       
       // Build verdict object
-      const verdict = {
+      const verdict: PolicyVerdict = {
         policy_name: policy.name,
         policy_version: policy.version,
         final_verdict: aggregation.final_verdict,
@@ -147,17 +165,18 @@ class PolicyEngine extends EventEmitter {
 
     } catch (error) {
       const totalLatency = Date.now() - startTime;
+      const err = error as Error;
       
       this.logger.error('[PolicyEngine] Evaluation failed', {
         policyName: policy.name,
-        error: error.message,
+        error: err.message,
         totalLatency
       });
 
       // Emit evaluation error event
       this.emit('policy:evaluation-error', {
         policyName: policy.name,
-        error: error.message,
+        error: err.message,
         totalLatency
       });
 
@@ -169,7 +188,7 @@ class PolicyEngine extends EventEmitter {
         passed: false,
         evaluated_at: new Date().toISOString(),
         rule_results: [],
-        error: error.message,
+        error: err.message,
         total_latency_ms: totalLatency
       };
     }
@@ -177,9 +196,8 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Evaluate all rules against content
-   * @private
    */
-  async evaluateRules(rules, content) {
+  private async evaluateRules(rules: Rule[], content: string): Promise<RuleResult[]> {
     if (this.config.settings.parallelEvaluation) {
       return this.evaluateRulesParallel(rules, content);
     }
@@ -188,20 +206,22 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Evaluate rules in parallel
-   * @private
    */
-  async evaluateRulesParallel(rules, content) {
+  private async evaluateRulesParallel(rules: Rule[], content: string): Promise<RuleResult[]> {
     this.logger.info('[PolicyEngine] Evaluating rules in parallel', {
       rulesCount: rules.length
     });
 
-    const promises = rules.map(async (rule) => {
-      const result = await this.judgeService.evaluate(rule, content);
+    const promises = rules.map(async (rule): Promise<RuleResult> => {
+      const result: JudgeEvaluationResult = await this.judgeService.evaluate(rule, content);
       return {
         rule_id: rule.id,
         action: rule.on_fail,
         weight: rule.weight || 1.0,
-        ...result
+        verdict: result.verdict,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        latency_ms: result.latency_ms || 0
       };
     });
 
@@ -210,22 +230,24 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Evaluate rules sequentially
-   * @private
    */
-  async evaluateRulesSequential(rules, content) {
+  private async evaluateRulesSequential(rules: Rule[], content: string): Promise<RuleResult[]> {
     this.logger.info('[PolicyEngine] Evaluating rules sequentially', {
       rulesCount: rules.length
     });
 
-    const results = [];
+    const results: RuleResult[] = [];
     
     for (const rule of rules) {
-      const result = await this.judgeService.evaluate(rule, content);
+      const result: JudgeEvaluationResult = await this.judgeService.evaluate(rule, content);
       results.push({
         rule_id: rule.id,
         action: rule.on_fail,
         weight: rule.weight || 1.0,
-        ...result
+        verdict: result.verdict,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        latency_ms: result.latency_ms || 0
       });
     }
 
@@ -235,7 +257,7 @@ class PolicyEngine extends EventEmitter {
   /**
    * Reload configuration from file
    */
-  reloadConfig() {
+  reloadConfig(): Config {
     this.config = loadConfig();
     
     // Update JudgeService config
@@ -256,9 +278,8 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Update and save configuration
-   * @param {Object} newConfig - New configuration to merge
    */
-  updateConfig(newConfig) {
+  updateConfig(newConfig: Partial<Config>): Config {
     // Merge with existing config
     if (newConfig.policy) {
       this.config.policy = { ...this.config.policy, ...newConfig.policy };
@@ -288,9 +309,8 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Get current configuration
-   * @returns {Object} Current configuration
    */
-  getConfig() {
+  getConfig(): Omit<Config, 'apiKey'> {
     return {
       policy: this.config.policy,
       judge: this.config.judge,
@@ -300,26 +320,22 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Get available evaluation strategies
-   * @returns {Array<string>} Available strategy names
    */
-  getAvailableStrategies() {
+  getAvailableStrategies(): EvaluationStrategy[] {
     return getAvailableStrategies();
   }
 
   /**
    * Set mock mode for testing
-   * @param {boolean} enabled - Enable/disable mock mode
-   * @param {Object} responses - Mock responses keyed by rule ID
    */
-  setMockMode(enabled, responses = {}) {
+  setMockMode(enabled: boolean, responses: MockResponses = {}): void {
     this.judgeService.setMockMode(enabled, responses);
   }
 
   /**
    * Health check
-   * @returns {Promise<Object>} Health status
    */
-  async healthCheck() {
+  async healthCheck(): Promise<PolicyEngineHealthCheck> {
     const judgeHealth = await this.judgeService.healthCheck();
     
     return {
@@ -337,12 +353,10 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Validate a policy configuration
-   * @param {Object} policy - Policy to validate
-   * @returns {Object} Validation result
    */
-  validatePolicy(policy) {
-    const errors = [];
-    const warnings = [];
+  validatePolicy(policy: PolicyInput): ValidationResult {
+    const errors: string[] = [];
+    const warnings: string[] = [];
 
     // Required fields
     if (!policy.name) {
@@ -388,10 +402,8 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Add a new rule to the policy
-   * @param {Object} rule - Rule to add
-   * @returns {Object} Result with success status
    */
-  addRule(rule) {
+  addRule(rule: RuleInput): RuleOperationResult {
     // Check if rule with same ID already exists
     const existingRule = this.config.policy.rules.find(r => r.id === rule.id);
     if (existingRule) {
@@ -402,7 +414,7 @@ class PolicyEngine extends EventEmitter {
     }
 
     // Set default values
-    const newRule = {
+    const newRule: Rule = {
       id: rule.id,
       description: rule.description || '',
       judge_prompt: rule.judge_prompt,
@@ -432,11 +444,8 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Update an existing rule
-   * @param {string} ruleId - ID of the rule to update
-   * @param {Object} updates - Fields to update
-   * @returns {Object} Result with success status
    */
-  updateRule(ruleId, updates) {
+  updateRule(ruleId: string, updates: Partial<RuleInput>): RuleOperationResult {
     const ruleIndex = this.config.policy.rules.findIndex(r => r.id === ruleId);
     
     if (ruleIndex === -1) {
@@ -459,9 +468,19 @@ class PolicyEngine extends EventEmitter {
 
     // Update the rule
     const existingRule = this.config.policy.rules[ruleIndex];
-    const updatedRule = {
+    if (!existingRule) {
+      return {
+        success: false,
+        message: `Rule with id '${ruleId}' not found`
+      };
+    }
+
+    const updatedRule: Rule = {
       ...existingRule,
       ...updates,
+      id: updates.id || existingRule.id,
+      judge_prompt: updates.judge_prompt || existingRule.judge_prompt,
+      on_fail: updates.on_fail || existingRule.on_fail,
       weight: updates.weight !== undefined ? updates.weight : existingRule.weight
     };
 
@@ -486,10 +505,8 @@ class PolicyEngine extends EventEmitter {
 
   /**
    * Delete a rule from the policy
-   * @param {string} ruleId - ID of the rule to delete
-   * @returns {Object} Result with success status
    */
-  deleteRule(ruleId) {
+  deleteRule(ruleId: string): RuleOperationResult {
     const ruleIndex = this.config.policy.rules.findIndex(r => r.id === ruleId);
     
     if (ruleIndex === -1) {
@@ -506,12 +523,12 @@ class PolicyEngine extends EventEmitter {
     saveConfig(this.config);
 
     this.logger.info('[PolicyEngine] Rule deleted', {
-      ruleId: deletedRule.id,
+      ruleId: deletedRule?.id,
       remainingRules: this.config.policy.rules.length
     });
 
     // Emit rule deleted event
-    this.emit('policy:rule-deleted', { ruleId: deletedRule.id });
+    this.emit('policy:rule-deleted', { ruleId: deletedRule?.id });
 
     return {
       success: true,
@@ -520,6 +537,5 @@ class PolicyEngine extends EventEmitter {
   }
 }
 
-module.exports = PolicyEngine;
-
+export default PolicyEngine;
 

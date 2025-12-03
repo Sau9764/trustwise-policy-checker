@@ -5,33 +5,36 @@
  * Supports multiple evaluation strategies: all, any, weighted_threshold
  */
 
-const PolicyEngine = require('../services/PolicyEngine');
-const JudgeService = require('../services/JudgeService');
-const { 
+import { PolicyEngine } from '../services/PolicyEngine';
+import { JudgeService } from '../services/JudgeService';
+import { 
   createStrategy, 
   getAvailableStrategies,
   AllStrategy,
   AnyStrategy,
-  WeightedThresholdStrategy 
-} = require('../services/AggregationStrategy');
-const { createPolicyRoutes } = require('../routes/PolicyRoutes');
-const { config, loadConfig, saveConfig } = require('../config/policy-config');
+  WeightedThresholdStrategy,
+  BaseStrategy,
+  ACTION_PRIORITY
+} from '../services/AggregationStrategy';
+import { createPolicyRoutes } from '../routes/PolicyRoutes';
+import { config, loadConfig, saveConfig, baseConfig } from '../config/policy-config';
+import type {
+  Logger,
+  InitializeOptions,
+  InitializeResult,
+  PolicyEngineInterface
+} from '../types';
 
 /**
  * Initialize the Policy Engine module
- * @param {Object} options - Initialization options
- * @param {Object} options.logger - Logger instance
- * @param {boolean} options.mockMode - Enable mock mode for testing
- * @param {Object} options.mockResponses - Mock responses for testing
- * @returns {Object} Initialized module components
  */
-const initialize = (options = {}) => {
-  const logger = options.logger || console;
+export const initialize = (options: InitializeOptions = {}): InitializeResult => {
+  const logger: Logger = options.logger || console;
   
   logger.info('[Trustwise] Initializing Policy Engine...');
   
   // Create PolicyEngine instance
-  const policyEngine = new PolicyEngine({
+  const policyEngine: PolicyEngineInterface = new PolicyEngine({
     logger,
     mockMode: options.mockMode || false,
     mockResponses: options.mockResponses || {}
@@ -53,10 +56,7 @@ const initialize = (options = {}) => {
 };
 
 // Export module components
-module.exports = {
-  // Main entry point
-  initialize,
-  
+export {
   // Core classes
   PolicyEngine,
   JudgeService,
@@ -64,17 +64,22 @@ module.exports = {
   // Strategies
   createStrategy,
   getAvailableStrategies,
+  BaseStrategy,
   AllStrategy,
   AnyStrategy,
   WeightedThresholdStrategy,
+  ACTION_PRIORITY,
   
   // Routes
   createPolicyRoutes,
   
   // Configuration
   config,
+  baseConfig,
   loadConfig,
   saveConfig
 };
 
+// Re-export types
+export * from '../types';
 

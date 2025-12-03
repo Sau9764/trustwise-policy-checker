@@ -10,30 +10,69 @@
  * - Mockable for testing
  */
 
-const OpenAI = require('openai');
-const https = require('https');
-const EventEmitter = require('events');
+import OpenAI from 'openai';
+import https from 'https';
+import { EventEmitter } from 'events';
+import type {
+  Logger,
+  JudgeConfig,
+  Rule,
+  JudgeEvaluationResult,
+  JudgeServiceOptions,
+  MockResponses,
+  MockResponse,
+  RetryConfig,
+  CircuitBreakerConfig,
+  RateLimitState,
+  JudgeMetrics,
+  JudgeMetricsReport,
+  HealthCheckResult,
+  Verdict,
+  JudgeServiceInterface
+} from '../types';
+import { ErrorType, CircuitState } from '../types';
 
-// Error types for categorization
-const ERROR_TYPES = {
-  TIMEOUT: 'TIMEOUT',
-  RATE_LIMIT: 'RATE_LIMIT',
-  SERVER_ERROR: 'SERVER_ERROR',
-  AUTH_ERROR: 'AUTH_ERROR',
-  NETWORK_ERROR: 'NETWORK_ERROR',
-  PARSE_ERROR: 'PARSE_ERROR',
-  UNKNOWN: 'UNKNOWN'
-};
+interface ExtendedError extends Error {
+  status?: number;
+  statusCode?: number;
+  code?: string;
+}
 
-// Circuit breaker states
-const CIRCUIT_STATES = {
-  CLOSED: 'CLOSED',     // Normal operation
-  OPEN: 'OPEN',         // Blocking requests
-  HALF_OPEN: 'HALF_OPEN' // Testing if service recovered
-};
+export class JudgeService extends EventEmitter implements JudgeServiceInterface {
+  private logger: Logger;
+  private config: Partial<JudgeConfig>;
+  
+  // Judge configuration
+  private model: string;
+  private temperature: number;
+  private maxTokens: number;
+  private timeout: number;
+  private maxRetries: number;
+  private retryDelay: number;
+  
+  // Retry configuration
+  private retryConfig: RetryConfig;
+  
+  // Circuit breaker configuration
+  private circuitBreaker: CircuitBreakerConfig;
+  
+  // Rate limit tracking
+  private rateLimitState: RateLimitState;
+  
+  // Performance metrics
+  private metrics: JudgeMetrics;
+  
+  // API key
+  private apiKey?: string;
+  
+  // Mock mode for testing
+  private mockMode: boolean;
+  private mockResponses: MockResponses;
+  
+  // OpenAI client
+  private openai?: OpenAI;
 
-class JudgeService extends EventEmitter {
-  constructor(options = {}) {
+  constructor(options: JudgeServiceOptions = {}) {
     super();
     this.logger = options.logger || console;
     this.config = options.config || {};
@@ -46,7 +85,7 @@ class JudgeService extends EventEmitter {
     this.maxRetries = this.config.maxRetries || 3;
     this.retryDelay = this.config.retryDelay || 1000;
     
-    // Retry configuration (following RAGHttpClient pattern)
+    // Retry configuration
     this.retryConfig = {
       maxRetries: this.maxRetries,
       initialDelayMs: this.retryDelay,
@@ -55,9 +94,9 @@ class JudgeService extends EventEmitter {
       jitterFactor: 0.1 // Add 10% random jitter to prevent thundering herd
     };
     
-    // Circuit breaker configuration (following PythonTranslationAdapter pattern)
+    // Circuit breaker configuration
     this.circuitBreaker = {
-      state: CIRCUIT_STATES.CLOSED,
+      state: CircuitState.CLOSED,
       failureCount: 0,
       failureThreshold: this.config.circuitBreakerThreshold || 5,
       resetTimeoutMs: this.config.circuitBreakerResetMs || 30000,
@@ -86,7 +125,7 @@ class JudgeService extends EventEmitter {
     };
     
     // API key
-    this.apiKey = options.apiKey || process.env.OPENAI_API_KEY;
+    this.apiKey = options.apiKey || process.env['OPENAI_API_KEY'];
     
     // Mock mode for testing
     this.mockMode = options.mockMode || false;
@@ -112,13 +151,13 @@ class JudgeService extends EventEmitter {
   /**
    * Initialize the OpenAI client with connection pooling
    */
-  initializeClient() {
+  private initializeClient(): void {
     if (!this.apiKey) {
       this.logger.warn('[JudgeService] Cannot initialize OpenAI client - API key not configured');
       return;
     }
 
-    const agentConfig = {
+    const agentConfig: https.AgentOptions = {
       keepAlive: true,
       maxSockets: 10,
       maxFreeSockets: 5,
@@ -141,12 +180,8 @@ class JudgeService extends EventEmitter {
 
   /**
    * Evaluate content against a rule using the LLM Judge
-   * 
-   * @param {Object} rule - Rule object with id, judge_prompt, etc.
-   * @param {string} content - Content to evaluate
-   * @returns {Promise<Object>} Verdict response
    */
-  async evaluate(rule, content) {
+  async evaluate(rule: Rule, content: string): Promise<JudgeEvaluationResult> {
     const startTime = Date.now();
     this.metrics.requests++;
     
@@ -166,7 +201,7 @@ class JudgeService extends EventEmitter {
       // Check circuit breaker before attempting request
       this.checkCircuitBreaker();
       
-      let result;
+      let result: JudgeEvaluationResult;
       
       if (this.mockMode) {
         result = await this.evaluateMock(rule, content);
@@ -199,12 +234,13 @@ class JudgeService extends EventEmitter {
       this.metrics.totalLatency += latency;
       
       // Categorize error and record failure
-      const errorType = this.categorizeError(error);
-      this.recordFailure(errorType, error);
+      const extendedError = error as ExtendedError;
+      const errorType = this.categorizeError(extendedError);
+      this.recordFailure(errorType, extendedError);
       
       this.logger.error('[JudgeService] Evaluation failed', {
         ruleId: rule.id,
-        error: error.message,
+        error: extendedError.message,
         errorType,
         latency,
         circuitState: this.circuitBreaker.state
@@ -213,7 +249,7 @@ class JudgeService extends EventEmitter {
       // Emit evaluation error event
       this.emit('judge:evaluation-error', {
         ruleId: rule.id,
-        error: error.message,
+        error: extendedError.message,
         errorType,
         latency
       });
@@ -222,9 +258,9 @@ class JudgeService extends EventEmitter {
       return {
         verdict: 'UNCERTAIN',
         confidence: 0,
-        reasoning: `Evaluation failed: ${error.message}`,
+        reasoning: `Evaluation failed: ${extendedError.message}`,
         latency_ms: latency,
-        error: error.message,
+        error: extendedError.message,
         errorType
       };
     }
@@ -232,16 +268,15 @@ class JudgeService extends EventEmitter {
 
   /**
    * Check circuit breaker state before making request
-   * @private
    */
-  checkCircuitBreaker() {
-    if (this.circuitBreaker.state === CIRCUIT_STATES.OPEN) {
+  private checkCircuitBreaker(): void {
+    if (this.circuitBreaker.state === CircuitState.OPEN) {
       // Check if reset timeout has passed
-      const timeSinceLastFailure = Date.now() - this.circuitBreaker.lastFailureTime;
+      const timeSinceLastFailure = Date.now() - (this.circuitBreaker.lastFailureTime || 0);
       
       if (timeSinceLastFailure >= this.circuitBreaker.resetTimeoutMs) {
         // Transition to half-open state
-        this.circuitBreaker.state = CIRCUIT_STATES.HALF_OPEN;
+        this.circuitBreaker.state = CircuitState.HALF_OPEN;
         this.circuitBreaker.halfOpenSuccessCount = 0;
         this.logger.info('[JudgeService] Circuit breaker HALF_OPEN - testing service');
         this.emit('judge:circuit-half-open');
@@ -254,20 +289,19 @@ class JudgeService extends EventEmitter {
 
   /**
    * Record successful request for circuit breaker
-   * @private
    */
-  recordSuccess() {
-    if (this.circuitBreaker.state === CIRCUIT_STATES.HALF_OPEN) {
+  private recordSuccess(): void {
+    if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
       this.circuitBreaker.halfOpenSuccessCount++;
       
       if (this.circuitBreaker.halfOpenSuccessCount >= this.circuitBreaker.halfOpenSuccessThreshold) {
         // Fully recover circuit
-        this.circuitBreaker.state = CIRCUIT_STATES.CLOSED;
+        this.circuitBreaker.state = CircuitState.CLOSED;
         this.circuitBreaker.failureCount = 0;
         this.logger.info('[JudgeService] Circuit breaker CLOSED - service recovered');
         this.emit('judge:circuit-closed');
       }
-    } else if (this.circuitBreaker.state === CIRCUIT_STATES.CLOSED) {
+    } else if (this.circuitBreaker.state === CircuitState.CLOSED) {
       // Reset failure count on success
       this.circuitBreaker.failureCount = 0;
     }
@@ -278,22 +312,21 @@ class JudgeService extends EventEmitter {
 
   /**
    * Record failed request for circuit breaker
-   * @private
    */
-  recordFailure(errorType, error) {
+  private recordFailure(errorType: ErrorType, error: ExtendedError): void {
     this.circuitBreaker.failureCount++;
     this.circuitBreaker.lastFailureTime = Date.now();
     
     // Track specific error types
-    if (errorType === ERROR_TYPES.TIMEOUT) {
+    if (errorType === ErrorType.TIMEOUT) {
       this.metrics.timeouts++;
-    } else if (errorType === ERROR_TYPES.RATE_LIMIT) {
+    } else if (errorType === ErrorType.RATE_LIMIT) {
       this.metrics.rateLimits++;
       this.handleRateLimit(error);
     }
     
     // Check if we should open the circuit
-    if (this.circuitBreaker.state === CIRCUIT_STATES.HALF_OPEN) {
+    if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
       // Immediate trip on half-open failure
       this.openCircuit();
     } else if (this.circuitBreaker.failureCount >= this.circuitBreaker.failureThreshold) {
@@ -303,11 +336,10 @@ class JudgeService extends EventEmitter {
 
   /**
    * Open the circuit breaker
-   * @private
    */
-  openCircuit() {
-    if (this.circuitBreaker.state !== CIRCUIT_STATES.OPEN) {
-      this.circuitBreaker.state = CIRCUIT_STATES.OPEN;
+  private openCircuit(): void {
+    if (this.circuitBreaker.state !== CircuitState.OPEN) {
+      this.circuitBreaker.state = CircuitState.OPEN;
       this.metrics.circuitBreakerTrips++;
       this.logger.error('[JudgeService] Circuit breaker OPEN - too many failures', {
         failureCount: this.circuitBreaker.failureCount,
@@ -322,15 +354,14 @@ class JudgeService extends EventEmitter {
 
   /**
    * Handle rate limit response
-   * @private
    */
-  handleRateLimit(error) {
+  private handleRateLimit(error: ExtendedError): void {
     this.rateLimitState.isLimited = true;
     this.rateLimitState.lastRateLimitTime = Date.now();
     
     // Try to parse Retry-After header from error
     const retryAfterMatch = error.message.match(/retry.?after[:\s]+(\d+)/i);
-    if (retryAfterMatch) {
+    if (retryAfterMatch?.[1]) {
       this.rateLimitState.retryAfterMs = parseInt(retryAfterMatch[1], 10) * 1000;
     } else {
       // Default to 60 seconds for rate limits
@@ -344,9 +375,8 @@ class JudgeService extends EventEmitter {
 
   /**
    * Categorize error type for proper handling
-   * @private
    */
-  categorizeError(error) {
+  private categorizeError(error: ExtendedError): ErrorType {
     const message = error.message?.toLowerCase() || '';
     const status = error.status || error.statusCode;
     
@@ -356,7 +386,7 @@ class JudgeService extends EventEmitter {
         message.includes('econnreset') ||
         error.code === 'ETIMEDOUT' ||
         error.code === 'ECONNRESET') {
-      return ERROR_TYPES.TIMEOUT;
+      return ErrorType.TIMEOUT;
     }
     
     // Rate limit errors (429)
@@ -364,19 +394,19 @@ class JudgeService extends EventEmitter {
         message.includes('rate limit') || 
         message.includes('too many requests') ||
         message.includes('quota')) {
-      return ERROR_TYPES.RATE_LIMIT;
+      return ErrorType.RATE_LIMIT;
     }
     
     // Server errors (5xx)
-    if (status >= 500 && status < 600) {
-      return ERROR_TYPES.SERVER_ERROR;
+    if (status && status >= 500 && status < 600) {
+      return ErrorType.SERVER_ERROR;
     }
     
     // Auth errors (401, 403)
     if (status === 401 || status === 403 || 
         message.includes('unauthorized') ||
         message.includes('invalid api key')) {
-      return ERROR_TYPES.AUTH_ERROR;
+      return ErrorType.AUTH_ERROR;
     }
     
     // Network errors
@@ -385,41 +415,39 @@ class JudgeService extends EventEmitter {
         message.includes('network') ||
         error.code === 'ENOTFOUND' ||
         error.code === 'ECONNREFUSED') {
-      return ERROR_TYPES.NETWORK_ERROR;
+      return ErrorType.NETWORK_ERROR;
     }
     
     // Parse errors
     if (message.includes('json') || message.includes('parse')) {
-      return ERROR_TYPES.PARSE_ERROR;
+      return ErrorType.PARSE_ERROR;
     }
     
-    return ERROR_TYPES.UNKNOWN;
+    return ErrorType.UNKNOWN;
   }
 
   /**
    * Check if error is retryable
-   * @private
    */
-  isRetryableError(errorType) {
+  private isRetryableError(errorType: ErrorType): boolean {
     // Retry on transient errors, not on auth or parse errors
     return [
-      ERROR_TYPES.TIMEOUT,
-      ERROR_TYPES.RATE_LIMIT,
-      ERROR_TYPES.SERVER_ERROR,
-      ERROR_TYPES.NETWORK_ERROR
+      ErrorType.TIMEOUT,
+      ErrorType.RATE_LIMIT,
+      ErrorType.SERVER_ERROR,
+      ErrorType.NETWORK_ERROR
     ].includes(errorType);
   }
 
   /**
    * Calculate delay for retry with exponential backoff and jitter
-   * @private
    */
-  calculateRetryDelay(attempt, errorType) {
+  private calculateRetryDelay(attempt: number, errorType: ErrorType): number {
     let baseDelay = this.retryConfig.initialDelayMs * 
                     Math.pow(this.retryConfig.backoffMultiplier, attempt - 1);
     
     // Use longer delay for rate limits
-    if (errorType === ERROR_TYPES.RATE_LIMIT && this.rateLimitState.retryAfterMs > 0) {
+    if (errorType === ErrorType.RATE_LIMIT && this.rateLimitState.retryAfterMs > 0) {
       baseDelay = Math.max(baseDelay, this.rateLimitState.retryAfterMs);
     }
     
@@ -434,29 +462,28 @@ class JudgeService extends EventEmitter {
 
   /**
    * Evaluate with retry logic and improved error handling
-   * @private
    */
-  async evaluateWithRetry(rule, content) {
+  private async evaluateWithRetry(rule: Rule, content: string): Promise<JudgeEvaluationResult> {
     // Check if OpenAI client is initialized
     if (!this.openai) {
       throw new Error('OPENAI_API_KEY not configured - cannot evaluate content');
     }
     
-    let lastError;
-    let lastErrorType = ERROR_TYPES.UNKNOWN;
+    let lastError: ExtendedError = new Error('Unknown error');
+    let lastErrorType: ErrorType = ErrorType.UNKNOWN;
     
     for (let attempt = 1; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
         return await this.evaluateLLM(rule, content);
       } catch (error) {
-        lastError = error;
-        lastErrorType = this.categorizeError(error);
+        lastError = error as ExtendedError;
+        lastErrorType = this.categorizeError(lastError);
         
         this.logger.warn('[JudgeService] Evaluation attempt failed', {
           ruleId: rule.id,
           attempt,
           maxRetries: this.retryConfig.maxRetries,
-          error: error.message,
+          error: lastError.message,
           errorType: lastErrorType
         });
         
@@ -465,7 +492,7 @@ class JudgeService extends EventEmitter {
           this.logger.warn('[JudgeService] Non-retryable error, aborting retries', {
             errorType: lastErrorType
           });
-          throw error;
+          throw lastError;
         }
         
         // Calculate delay and wait before retrying
@@ -490,12 +517,15 @@ class JudgeService extends EventEmitter {
 
   /**
    * Call LLM for evaluation
-   * @private
    */
-  async evaluateLLM(rule, content) {
+  private async evaluateLLM(rule: Rule, content: string): Promise<JudgeEvaluationResult> {
+    if (!this.openai) {
+      throw new Error('OpenAI client not initialized');
+    }
+
     const systemPrompt = `You are a content moderation judge. Evaluate the provided content against the given rule and respond with a structured JSON verdict.
 
-RULE: ${rule.description}
+RULE: ${rule.description || ''}
 CRITERIA: ${rule.judge_prompt}
 
 You MUST respond with ONLY a valid JSON object in this exact format:
@@ -528,7 +558,11 @@ Guidelines:
     const responseText = response.choices[0]?.message?.content || '';
     
     try {
-      const parsed = JSON.parse(responseText);
+      const parsed = JSON.parse(responseText) as {
+        verdict?: string;
+        confidence?: number | string;
+        reasoning?: string;
+      };
       
       // Validate response structure
       const verdict = this.normalizeVerdict(parsed.verdict);
@@ -541,11 +575,10 @@ Guidelines:
         reasoning
       };
       
-    } catch (parseError) {
+    } catch {
       this.logger.error('[JudgeService] Failed to parse LLM response', {
         ruleId: rule.id,
-        responseText,
-        error: parseError.message
+        responseText
       });
       
       // Attempt to extract verdict from raw text
@@ -555,39 +588,44 @@ Guidelines:
 
   /**
    * Mock evaluation for testing
-   * @private
    */
-  async evaluateMock(rule, content) {
+  private async evaluateMock(rule: Rule, content: string): Promise<JudgeEvaluationResult> {
     // Check if there's a specific mock response for this rule
-    if (this.mockResponses[rule.id]) {
-      const mockResponse = this.mockResponses[rule.id];
-      
+    const mockResponse = this.mockResponses[rule.id];
+    
+    if (mockResponse) {
       // If it's a function, call it with content
       if (typeof mockResponse === 'function') {
         return mockResponse(content);
       }
       
+      const response = mockResponse as MockResponse;
+      
       // If it's a promise rejection (for timeout testing)
-      if (mockResponse.timeout) {
-        await this.sleep(mockResponse.timeout);
+      if (response.timeout) {
+        await this.sleep(response.timeout);
         throw new Error('Request timeout');
       }
       
       // Simulate rate limit
-      if (mockResponse.rateLimit) {
-        const error = new Error('Rate limit exceeded');
+      if (response.rateLimit) {
+        const error = new Error('Rate limit exceeded') as ExtendedError;
         error.status = 429;
         throw error;
       }
       
       // Simulate circuit breaker
-      if (mockResponse.circuitBreaker) {
+      if (response.circuitBreaker) {
         this.circuitBreaker.failureCount = this.circuitBreaker.failureThreshold;
         this.openCircuit();
         throw new Error('Circuit breaker OPEN');
       }
       
-      return mockResponse;
+      return {
+        verdict: response.verdict || 'PASS',
+        confidence: response.confidence || 0.9,
+        reasoning: response.reasoning || 'Mock evaluation'
+      };
     }
     
     // Default mock response - PASS
@@ -600,9 +638,8 @@ Guidelines:
 
   /**
    * Normalize verdict to valid values
-   * @private
    */
-  normalizeVerdict(verdict) {
+  private normalizeVerdict(verdict?: string): Verdict {
     if (!verdict) return 'UNCERTAIN';
     
     const normalized = String(verdict).toUpperCase().trim();
@@ -620,14 +657,13 @@ Guidelines:
 
   /**
    * Normalize confidence to 0-1 range
-   * @private
    */
-  normalizeConfidence(confidence) {
+  private normalizeConfidence(confidence?: number | string): number {
     if (confidence === undefined || confidence === null) {
       return 0.5;
     }
     
-    const num = parseFloat(confidence);
+    const num = parseFloat(String(confidence));
     
     if (isNaN(num)) {
       return 0.5;
@@ -643,12 +679,11 @@ Guidelines:
 
   /**
    * Extract verdict from raw text when JSON parsing fails
-   * @private
    */
-  extractVerdictFromText(text) {
+  private extractVerdictFromText(text: string): JudgeEvaluationResult {
     const upperText = text.toUpperCase();
     
-    let verdict = 'UNCERTAIN';
+    let verdict: Verdict = 'UNCERTAIN';
     if (upperText.includes('PASS')) {
       verdict = 'PASS';
     } else if (upperText.includes('FAIL')) {
@@ -664,17 +699,15 @@ Guidelines:
 
   /**
    * Sleep utility for retry delays
-   * @private
    */
-  sleep(ms) {
+  private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
    * Update configuration at runtime
-   * @param {Object} newConfig - New configuration
    */
-  updateConfig(newConfig) {
+  updateConfig(newConfig: Partial<JudgeConfig>): void {
     if (newConfig.model) this.model = newConfig.model;
     if (newConfig.temperature !== undefined) this.temperature = newConfig.temperature;
     if (newConfig.maxTokens) this.maxTokens = newConfig.maxTokens;
@@ -704,10 +737,8 @@ Guidelines:
 
   /**
    * Set mock mode for testing
-   * @param {boolean} enabled - Enable/disable mock mode
-   * @param {Object} responses - Mock responses keyed by rule ID
    */
-  setMockMode(enabled, responses = {}) {
+  setMockMode(enabled: boolean, responses: MockResponses = {}): void {
     this.mockMode = enabled;
     this.mockResponses = responses;
     
@@ -719,12 +750,11 @@ Guidelines:
 
   /**
    * Get performance metrics
-   * @returns {Object} Performance metrics
    */
-  getMetrics() {
+  getMetrics(): JudgeMetricsReport {
     const avgLatency = this.metrics.requests > 0
       ? (this.metrics.totalLatency / this.metrics.requests).toFixed(2)
-      : 0;
+      : '0';
     
     return {
       ...this.metrics,
@@ -741,8 +771,8 @@ Guidelines:
   /**
    * Reset circuit breaker manually (for recovery)
    */
-  resetCircuitBreaker() {
-    this.circuitBreaker.state = CIRCUIT_STATES.CLOSED;
+  resetCircuitBreaker(): void {
+    this.circuitBreaker.state = CircuitState.CLOSED;
     this.circuitBreaker.failureCount = 0;
     this.circuitBreaker.halfOpenSuccessCount = 0;
     this.rateLimitState.isLimited = false;
@@ -753,9 +783,8 @@ Guidelines:
 
   /**
    * Health check
-   * @returns {Promise<Object>} Health status
    */
-  async healthCheck() {
+  async healthCheck(): Promise<HealthCheckResult> {
     if (this.mockMode) {
       return { 
         healthy: true, 
@@ -776,7 +805,7 @@ Guidelines:
     }
     
     // Check circuit breaker state
-    if (this.circuitBreaker.state === CIRCUIT_STATES.OPEN) {
+    if (this.circuitBreaker.state === CircuitState.OPEN) {
       return {
         healthy: false,
         mode: 'live',
@@ -788,7 +817,7 @@ Guidelines:
     
     try {
       // Simple API check
-      const response = await this.openai.models.list();
+      await this.openai.models.list();
       return {
         healthy: true,
         mode: 'live',
@@ -797,19 +826,21 @@ Guidelines:
         metrics: this.getMetrics()
       };
     } catch (error) {
+      const err = error as Error;
       return {
         healthy: false,
         mode: 'live',
-        error: error.message,
+        error: err.message,
         circuitState: this.circuitBreaker.state,
         metrics: this.getMetrics()
       };
     }
   }
+
+  // Static properties for external access
+  static readonly ERROR_TYPES = ErrorType;
+  static readonly CIRCUIT_STATES = CircuitState;
 }
 
-// Export error types for external use
-JudgeService.ERROR_TYPES = ERROR_TYPES;
-JudgeService.CIRCUIT_STATES = CIRCUIT_STATES;
+export default JudgeService;
 
-module.exports = JudgeService;
