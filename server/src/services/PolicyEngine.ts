@@ -7,12 +7,13 @@
  * - Aggregates judgments using configured strategy
  * - Returns structured verdict with latency metrics
  * - Event-driven for extensibility
+ * - Uses MongoDB for configuration storage via ConfigService
  */
 
 import { EventEmitter } from 'events';
 import { JudgeService } from './JudgeService';
+import { ConfigService } from './ConfigService';
 import { createStrategy, getAvailableStrategies } from './AggregationStrategy';
-import { loadConfig, saveConfig } from '../config/policy-config';
 import type {
   Logger,
   Config,
@@ -34,18 +35,46 @@ import type {
   JudgeEvaluationResult
 } from '../types';
 
+export interface PolicyEngineExtendedOptions extends PolicyEngineOptions {
+  configService?: ConfigService;
+}
+
 export class PolicyEngine extends EventEmitter implements PolicyEngineInterface {
   private logger: Logger;
   private config: Config;
+  private configService: ConfigService | null;
   private judgeService: JudgeServiceInterface;
   private runtimePolicy: Policy | null;
+  private initialized: boolean = false;
 
-  constructor(options: PolicyEngineOptions = {}) {
+  constructor(options: PolicyEngineExtendedOptions = {}) {
     super();
     this.logger = options.logger || console;
+    this.configService = options.configService || null;
     
-    // Load configuration
-    this.config = options.config || loadConfig();
+    // Initialize with provided config or empty config (will be loaded later)
+    this.config = options.config || {
+      policy: {
+        name: 'uninitialized',
+        version: '0.0.0',
+        default_action: 'warn',
+        rules: [],
+        evaluation_strategy: 'all'
+      },
+      judge: {
+        model: 'gpt-4o-mini',
+        temperature: 0.1,
+        maxTokens: 500,
+        timeout: 30000,
+        maxRetries: 3,
+        retryDelay: 1000
+      },
+      settings: {
+        parallelEvaluation: true,
+        debugLog: false,
+        cacheResults: false
+      }
+    };
     
     // Initialize JudgeService
     this.judgeService = options.judgeService || new JudgeService({
@@ -58,6 +87,25 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
     
     // Runtime policy override (for API-provided policies)
     this.runtimePolicy = null;
+  }
+
+  /**
+   * Initialize the PolicyEngine with configuration from MongoDB
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+
+    if (this.configService) {
+      this.logger.info('[PolicyEngine] Loading configuration from MongoDB...');
+      this.config = await this.configService.initialize();
+      
+      // Update JudgeService with loaded config
+      this.judgeService.updateConfig(this.config.judge);
+    }
+
+    this.initialized = true;
     
     this.logger.info('[PolicyEngine] Initialized', {
       policyName: this.config.policy.name,
@@ -255,15 +303,35 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
   }
 
   /**
-   * Reload configuration from file
+   * Reload configuration from MongoDB
    */
   reloadConfig(): Config {
-    this.config = loadConfig();
+    // This is now sync but we'll update config from cache
+    if (this.configService) {
+      this.configService.clearCache();
+    }
     
-    // Update JudgeService config
-    this.judgeService.updateConfig(this.config.judge);
+    this.logger.info('[PolicyEngine] Configuration cache cleared, will reload on next access');
+
+    // Emit config reload event
+    this.emit('policy:config-reloaded', {
+      policyName: this.config.policy.name
+    });
+
+    return this.config;
+  }
+
+  /**
+   * Reload configuration from MongoDB (async version)
+   */
+  async reloadConfigAsync(): Promise<Config> {
+    if (this.configService) {
+      this.configService.clearCache();
+      this.config = await this.configService.getConfig();
+      this.judgeService.updateConfig(this.config.judge);
+    }
     
-    this.logger.info('[PolicyEngine] Configuration reloaded', {
+    this.logger.info('[PolicyEngine] Configuration reloaded from MongoDB', {
       policyName: this.config.policy.name,
       rulesCount: this.config.policy.rules.length
     });
@@ -277,10 +345,10 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
   }
 
   /**
-   * Update and save configuration
+   * Update and save configuration to MongoDB
    */
   updateConfig(newConfig: Partial<Config>): Config {
-    // Merge with existing config
+    // Merge with existing config in memory
     if (newConfig.policy) {
       this.config.policy = { ...this.config.policy, ...newConfig.policy };
     }
@@ -292,10 +360,51 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
       this.config.settings = { ...this.config.settings, ...newConfig.settings };
     }
 
-    // Save to file
-    saveConfig(this.config);
+    // Save to MongoDB asynchronously
+    if (this.configService) {
+      this.configService.updateConfig(newConfig).catch(err => {
+        this.logger.error('[PolicyEngine] Failed to save config to MongoDB', {
+          error: (err as Error).message
+        });
+      });
+    }
 
-    this.logger.info('[PolicyEngine] Configuration updated and saved', {
+    this.logger.info('[PolicyEngine] Configuration updated', {
+      policyName: this.config.policy.name
+    });
+
+    // Emit config update event
+    this.emit('policy:config-updated', {
+      policyName: this.config.policy.name
+    });
+
+    return this.config;
+  }
+
+  /**
+   * Update and save configuration to MongoDB (async version)
+   */
+  async updateConfigAsync(newConfig: Partial<Config>): Promise<Config> {
+    if (this.configService) {
+      this.config = await this.configService.updateConfig(newConfig);
+      if (newConfig.judge) {
+        this.judgeService.updateConfig(this.config.judge);
+      }
+    } else {
+      // Fallback to in-memory update
+      if (newConfig.policy) {
+        this.config.policy = { ...this.config.policy, ...newConfig.policy };
+      }
+      if (newConfig.judge) {
+        this.config.judge = { ...this.config.judge, ...newConfig.judge };
+        this.judgeService.updateConfig(this.config.judge);
+      }
+      if (newConfig.settings) {
+        this.config.settings = { ...this.config.settings, ...newConfig.settings };
+      }
+    }
+
+    this.logger.info('[PolicyEngine] Configuration updated and saved to MongoDB', {
       policyName: this.config.policy.name
     });
 
@@ -425,8 +534,14 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
     // Add to rules array
     this.config.policy.rules.push(newRule);
 
-    // Save to file
-    saveConfig(this.config);
+    // Save to MongoDB asynchronously
+    if (this.configService) {
+      this.configService.addRule(rule).catch(err => {
+        this.logger.error('[PolicyEngine] Failed to save rule to MongoDB', {
+          error: (err as Error).message
+        });
+      });
+    }
 
     this.logger.info('[PolicyEngine] Rule added', {
       ruleId: newRule.id,
@@ -440,6 +555,21 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
       success: true,
       rule: newRule
     };
+  }
+
+  /**
+   * Add a new rule to the policy (async version)
+   */
+  async addRuleAsync(rule: RuleInput): Promise<RuleOperationResult> {
+    if (this.configService) {
+      const result = await this.configService.addRule(rule);
+      if (result.success && result.rule) {
+        this.config.policy.rules.push(result.rule);
+        this.emit('policy:rule-added', { rule: result.rule });
+      }
+      return result;
+    }
+    return this.addRule(rule);
   }
 
   /**
@@ -486,8 +616,14 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
 
     this.config.policy.rules[ruleIndex] = updatedRule;
 
-    // Save to file
-    saveConfig(this.config);
+    // Save to MongoDB asynchronously
+    if (this.configService) {
+      this.configService.updateRule(ruleId, updates).catch(err => {
+        this.logger.error('[PolicyEngine] Failed to update rule in MongoDB', {
+          error: (err as Error).message
+        });
+      });
+    }
 
     this.logger.info('[PolicyEngine] Rule updated', {
       ruleId: updatedRule.id,
@@ -501,6 +637,24 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
       success: true,
       rule: updatedRule
     };
+  }
+
+  /**
+   * Update an existing rule (async version)
+   */
+  async updateRuleAsync(ruleId: string, updates: Partial<RuleInput>): Promise<RuleOperationResult> {
+    if (this.configService) {
+      const result = await this.configService.updateRule(ruleId, updates);
+      if (result.success && result.rule) {
+        const ruleIndex = this.config.policy.rules.findIndex(r => r.id === ruleId);
+        if (ruleIndex !== -1) {
+          this.config.policy.rules[ruleIndex] = result.rule;
+        }
+        this.emit('policy:rule-updated', { rule: result.rule });
+      }
+      return result;
+    }
+    return this.updateRule(ruleId, updates);
   }
 
   /**
@@ -519,8 +673,14 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
     // Remove the rule
     const deletedRule = this.config.policy.rules.splice(ruleIndex, 1)[0];
 
-    // Save to file
-    saveConfig(this.config);
+    // Save to MongoDB asynchronously
+    if (this.configService) {
+      this.configService.deleteRule(ruleId).catch(err => {
+        this.logger.error('[PolicyEngine] Failed to delete rule from MongoDB', {
+          error: (err as Error).message
+        });
+      });
+    }
 
     this.logger.info('[PolicyEngine] Rule deleted', {
       ruleId: deletedRule?.id,
@@ -535,7 +695,43 @@ export class PolicyEngine extends EventEmitter implements PolicyEngineInterface 
       deletedRule
     };
   }
+
+  /**
+   * Delete a rule from the policy (async version)
+   */
+  async deleteRuleAsync(ruleId: string): Promise<RuleOperationResult> {
+    if (this.configService) {
+      const result = await this.configService.deleteRule(ruleId);
+      if (result.success) {
+        const ruleIndex = this.config.policy.rules.findIndex(r => r.id === ruleId);
+        if (ruleIndex !== -1) {
+          this.config.policy.rules.splice(ruleIndex, 1);
+        }
+        this.emit('policy:rule-deleted', { ruleId });
+      }
+      return result;
+    }
+    return this.deleteRule(ruleId);
+  }
+
+  /**
+   * Reset configuration to default
+   */
+  async resetToDefault(): Promise<Config> {
+    if (this.configService) {
+      this.config = await this.configService.resetToDefault();
+      this.judgeService.updateConfig(this.config.judge);
+      
+      this.logger.info('[PolicyEngine] Configuration reset to default', {
+        policyName: this.config.policy.name
+      });
+
+      this.emit('policy:config-reset', {
+        policyName: this.config.policy.name
+      });
+    }
+    return this.config;
+  }
 }
 
 export default PolicyEngine;
-

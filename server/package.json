@@ -5,10 +5,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc && npm run copy-config",
-    "copy-config": "cp -r src/config/*.json dist/config/",
+    "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsc && npm run copy-config && nodemon dist/index.js",
+    "dev": "tsc && nodemon dist/index.js",
     "dev:ts": "ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:watch": "tsc -w",
     "test": "ts-node src/tests/PolicyEngine.test.ts",

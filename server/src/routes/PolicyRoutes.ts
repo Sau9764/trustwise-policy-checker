@@ -5,8 +5,13 @@
  * - POST /api/policy/evaluate - Evaluate content against policy
  * - GET /api/policy/config - Get current policy configuration
  * - POST /api/policy/config - Update policy configuration
+ * - POST /api/policy/config/reload - Reload configuration from MongoDB
+ * - POST /api/policy/config/reset - Reset configuration to default
  * - GET /api/policy/health - Health check endpoint
  * - POST /api/policy/validate - Validate a policy configuration
+ * - POST /api/policy/rules - Add a new rule
+ * - PUT /api/policy/rules/:ruleId - Update a rule
+ * - DELETE /api/policy/rules/:ruleId - Delete a rule
  */
 
 import { Router, Request, Response } from 'express';
@@ -21,10 +26,13 @@ import type {
   RuleInput
 } from '../types';
 import { HistoryService } from '../services/HistoryService';
+import { ConfigService } from '../services/ConfigService';
+import { PolicyEngine } from '../services/PolicyEngine';
 import { isDatabaseConnected } from '../config/database';
 
 export interface PolicyRoutesExtendedOptions extends PolicyRoutesOptions {
   historyService?: HistoryService;
+  configService?: ConfigService;
 }
 
 /**
@@ -37,6 +45,7 @@ export const createPolicyRoutes = (
   const router = Router();
   const logger: Logger = options.logger || console;
   const historyService = options.historyService;
+  const configService = options.configService;
 
   /**
    * POST /api/policy/evaluate
@@ -139,9 +148,9 @@ export const createPolicyRoutes = (
 
   /**
    * POST /api/policy/config
-   * Update policy configuration
+   * Update policy configuration (saved to MongoDB)
    */
-  router.post('/config', (req: Request<object, unknown, ConfigUpdateRequest>, res: Response): void => {
+  router.post('/config', async (req: Request<object, unknown, ConfigUpdateRequest>, res: Response): Promise<void> => {
     try {
       const newConfig = req.body;
 
@@ -175,11 +184,14 @@ export const createPolicyRoutes = (
         sections: Object.keys(newConfig)
       });
 
-      const updatedConfig = policyEngine.updateConfig(newConfig as Parameters<typeof policyEngine.updateConfig>[0]);
+      // Use async method for MongoDB persistence
+      const updatedConfig = await (policyEngine as PolicyEngine).updateConfigAsync(
+        newConfig as Parameters<typeof policyEngine.updateConfig>[0]
+      );
 
       res.json({
         success: true,
-        message: 'Configuration updated',
+        message: 'Configuration updated and saved to MongoDB',
         config: updatedConfig
       });
 
@@ -198,23 +210,52 @@ export const createPolicyRoutes = (
 
   /**
    * POST /api/policy/config/reload
-   * Reload configuration from file
+   * Reload configuration from MongoDB
    */
-  router.post('/config/reload', (_req: Request, res: Response): void => {
+  router.post('/config/reload', async (_req: Request, res: Response): Promise<void> => {
     try {
       logger.info('[PolicyRoutes] Config reload request');
 
-      const config = policyEngine.reloadConfig();
+      const config = await (policyEngine as PolicyEngine).reloadConfigAsync();
 
       res.json({
         success: true,
-        message: 'Configuration reloaded from file',
+        message: 'Configuration reloaded from MongoDB',
         config
       });
 
     } catch (error) {
       const err = error as Error;
       logger.error('[PolicyRoutes] Reload config error', {
+        error: err.message
+      });
+
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: err.message
+      });
+    }
+  });
+
+  /**
+   * POST /api/policy/config/reset
+   * Reset configuration to default values
+   */
+  router.post('/config/reset', async (_req: Request, res: Response): Promise<void> => {
+    try {
+      logger.info('[PolicyRoutes] Config reset to default request');
+
+      const config = await (policyEngine as PolicyEngine).resetToDefault();
+
+      res.json({
+        success: true,
+        message: 'Configuration reset to default values',
+        config
+      });
+
+    } catch (error) {
+      const err = error as Error;
+      logger.error('[PolicyRoutes] Reset config error', {
         error: err.message
       });
 
@@ -234,7 +275,12 @@ export const createPolicyRoutes = (
       const health = await policyEngine.healthCheck();
 
       const statusCode = health.healthy ? 200 : 503;
-      res.status(statusCode).json(health);
+      res.status(statusCode).json({
+        ...health,
+        database: {
+          connected: isDatabaseConnected()
+        }
+      });
 
     } catch (error) {
       const err = error as Error;
@@ -288,9 +334,9 @@ export const createPolicyRoutes = (
 
   /**
    * POST /api/policy/rules
-   * Add a new rule to the policy
+   * Add a new rule to the policy (saved to MongoDB)
    */
-  router.post('/rules', (req: Request<object, unknown, RuleInput>, res: Response): void => {
+  router.post('/rules', async (req: Request<object, unknown, RuleInput>, res: Response): Promise<void> => {
     try {
       const rule = req.body;
 
@@ -304,7 +350,7 @@ export const createPolicyRoutes = (
 
       logger.info('[PolicyRoutes] Add rule request', { ruleId: rule.id });
 
-      const result = policyEngine.addRule(rule);
+      const result = await (policyEngine as PolicyEngine).addRuleAsync(rule);
 
       if (!result.success) {
         res.status(400).json({
@@ -316,7 +362,7 @@ export const createPolicyRoutes = (
 
       res.json({
         success: true,
-        message: 'Rule added successfully',
+        message: 'Rule added successfully and saved to MongoDB',
         rule: result.rule,
         config: policyEngine.getConfig()
       });
@@ -336,9 +382,9 @@ export const createPolicyRoutes = (
 
   /**
    * PUT /api/policy/rules/:ruleId
-   * Update an existing rule
+   * Update an existing rule (saved to MongoDB)
    */
-  router.put('/rules/:ruleId', (req: Request<{ ruleId: string }, unknown, Partial<RuleInput>>, res: Response): void => {
+  router.put('/rules/:ruleId', async (req: Request<{ ruleId: string }, unknown, Partial<RuleInput>>, res: Response): Promise<void> => {
     try {
       const { ruleId } = req.params;
       const updates = req.body;
@@ -353,7 +399,7 @@ export const createPolicyRoutes = (
 
       logger.info('[PolicyRoutes] Update rule request', { ruleId });
 
-      const result = policyEngine.updateRule(ruleId, updates);
+      const result = await (policyEngine as PolicyEngine).updateRuleAsync(ruleId, updates);
 
       if (!result.success) {
         res.status(404).json({
@@ -365,7 +411,7 @@ export const createPolicyRoutes = (
 
       res.json({
         success: true,
-        message: 'Rule updated successfully',
+        message: 'Rule updated successfully and saved to MongoDB',
         rule: result.rule,
         config: policyEngine.getConfig()
       });
@@ -385,15 +431,15 @@ export const createPolicyRoutes = (
 
   /**
    * DELETE /api/policy/rules/:ruleId
-   * Delete a rule from the policy
+   * Delete a rule from the policy (saved to MongoDB)
    */
-  router.delete('/rules/:ruleId', (req: Request<{ ruleId: string }>, res: Response): void => {
+  router.delete('/rules/:ruleId', async (req: Request<{ ruleId: string }>, res: Response): Promise<void> => {
     try {
       const { ruleId } = req.params;
 
       logger.info('[PolicyRoutes] Delete rule request', { ruleId });
 
-      const result = policyEngine.deleteRule(ruleId);
+      const result = await (policyEngine as PolicyEngine).deleteRuleAsync(ruleId);
 
       if (!result.success) {
         res.status(404).json({
@@ -405,7 +451,7 @@ export const createPolicyRoutes = (
 
       res.json({
         success: true,
-        message: 'Rule deleted successfully',
+        message: 'Rule deleted successfully and saved to MongoDB',
         config: policyEngine.getConfig()
       });
 
