@@ -385,6 +385,139 @@ class PolicyEngine extends EventEmitter {
       warnings
     };
   }
+
+  /**
+   * Add a new rule to the policy
+   * @param {Object} rule - Rule to add
+   * @returns {Object} Result with success status
+   */
+  addRule(rule) {
+    // Check if rule with same ID already exists
+    const existingRule = this.config.policy.rules.find(r => r.id === rule.id);
+    if (existingRule) {
+      return {
+        success: false,
+        message: `Rule with id '${rule.id}' already exists`
+      };
+    }
+
+    // Set default values
+    const newRule = {
+      id: rule.id,
+      description: rule.description || '',
+      judge_prompt: rule.judge_prompt,
+      on_fail: rule.on_fail || 'warn',
+      weight: rule.weight !== undefined ? rule.weight : 1.0
+    };
+
+    // Add to rules array
+    this.config.policy.rules.push(newRule);
+
+    // Save to file
+    saveConfig(this.config);
+
+    this.logger.info('[PolicyEngine] Rule added', {
+      ruleId: newRule.id,
+      totalRules: this.config.policy.rules.length
+    });
+
+    // Emit rule added event
+    this.emit('policy:rule-added', { rule: newRule });
+
+    return {
+      success: true,
+      rule: newRule
+    };
+  }
+
+  /**
+   * Update an existing rule
+   * @param {string} ruleId - ID of the rule to update
+   * @param {Object} updates - Fields to update
+   * @returns {Object} Result with success status
+   */
+  updateRule(ruleId, updates) {
+    const ruleIndex = this.config.policy.rules.findIndex(r => r.id === ruleId);
+    
+    if (ruleIndex === -1) {
+      return {
+        success: false,
+        message: `Rule with id '${ruleId}' not found`
+      };
+    }
+
+    // If updating the ID, check for conflicts
+    if (updates.id && updates.id !== ruleId) {
+      const conflictRule = this.config.policy.rules.find(r => r.id === updates.id);
+      if (conflictRule) {
+        return {
+          success: false,
+          message: `Rule with id '${updates.id}' already exists`
+        };
+      }
+    }
+
+    // Update the rule
+    const existingRule = this.config.policy.rules[ruleIndex];
+    const updatedRule = {
+      ...existingRule,
+      ...updates,
+      weight: updates.weight !== undefined ? updates.weight : existingRule.weight
+    };
+
+    this.config.policy.rules[ruleIndex] = updatedRule;
+
+    // Save to file
+    saveConfig(this.config);
+
+    this.logger.info('[PolicyEngine] Rule updated', {
+      ruleId: updatedRule.id,
+      updates: Object.keys(updates)
+    });
+
+    // Emit rule updated event
+    this.emit('policy:rule-updated', { rule: updatedRule });
+
+    return {
+      success: true,
+      rule: updatedRule
+    };
+  }
+
+  /**
+   * Delete a rule from the policy
+   * @param {string} ruleId - ID of the rule to delete
+   * @returns {Object} Result with success status
+   */
+  deleteRule(ruleId) {
+    const ruleIndex = this.config.policy.rules.findIndex(r => r.id === ruleId);
+    
+    if (ruleIndex === -1) {
+      return {
+        success: false,
+        message: `Rule with id '${ruleId}' not found`
+      };
+    }
+
+    // Remove the rule
+    const deletedRule = this.config.policy.rules.splice(ruleIndex, 1)[0];
+
+    // Save to file
+    saveConfig(this.config);
+
+    this.logger.info('[PolicyEngine] Rule deleted', {
+      ruleId: deletedRule.id,
+      remainingRules: this.config.policy.rules.length
+    });
+
+    // Emit rule deleted event
+    this.emit('policy:rule-deleted', { ruleId: deletedRule.id });
+
+    return {
+      success: true,
+      deletedRule
+    };
+  }
 }
 
 module.exports = PolicyEngine;

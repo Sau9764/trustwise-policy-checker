@@ -9,7 +9,7 @@
         "description": "Content must not contain hate speech or slurs",
         "judge_prompt": "Does this content contain hate speech, slurs, or discriminatory language? Respond with PASS if clean, FAIL if violation found.",
         "on_fail": "block",
-        "weight": 1.0
+        "weight": 0.6
       },
       {
         "id": "no_pii",
@@ -24,6 +24,13 @@
         "judge_prompt": "Is this content written in a professional, respectful tone? Respond PASS if professional, FAIL if unprofessional.",
         "on_fail": "warn",
         "weight": 0.5
+      },
+      {
+        "id": "no_integer_value",
+        "description": "No integer value allwoed",
+        "judge_prompt": "no integer value alllowed in this content",
+        "on_fail": "warn",
+        "weight": 1
       }
     ],
     "evaluation_strategy": "all",
@@ -39,9 +46,7 @@
   },
   "settings": {
     "parallelEvaluation": true,
-    "debugLog": false,
+    "debugLog": true,
     "cacheResults": false
   }
 }
-
-

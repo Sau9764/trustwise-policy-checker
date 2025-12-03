@@ -232,6 +232,134 @@ const createPolicyRoutes = (policyEngine, options = {}) => {
     }
   });
 
+  /**
+   * POST /api/policy/rules
+   * Add a new rule to the policy
+   */
+  router.post('/rules', (req, res) => {
+    try {
+      const rule = req.body;
+
+      if (!rule || !rule.id || !rule.judge_prompt) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Rule must have id and judge_prompt fields'
+        });
+      }
+
+      logger.info('[PolicyRoutes] Add rule request', { ruleId: rule.id });
+
+      const result = policyEngine.addRule(rule);
+
+      if (!result.success) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: result.message
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Rule added successfully',
+        rule: result.rule,
+        config: policyEngine.getConfig()
+      });
+
+    } catch (error) {
+      logger.error('[PolicyRoutes] Add rule error', {
+        error: error.message
+      });
+
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * PUT /api/policy/rules/:ruleId
+   * Update an existing rule
+   */
+  router.put('/rules/:ruleId', (req, res) => {
+    try {
+      const { ruleId } = req.params;
+      const updates = req.body;
+
+      if (!updates || Object.keys(updates).length === 0) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Update data is required'
+        });
+      }
+
+      logger.info('[PolicyRoutes] Update rule request', { ruleId });
+
+      const result = policyEngine.updateRule(ruleId, updates);
+
+      if (!result.success) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: result.message
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Rule updated successfully',
+        rule: result.rule,
+        config: policyEngine.getConfig()
+      });
+
+    } catch (error) {
+      logger.error('[PolicyRoutes] Update rule error', {
+        error: error.message
+      });
+
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * DELETE /api/policy/rules/:ruleId
+   * Delete a rule from the policy
+   */
+  router.delete('/rules/:ruleId', (req, res) => {
+    try {
+      const { ruleId } = req.params;
+
+      logger.info('[PolicyRoutes] Delete rule request', { ruleId });
+
+      const result = policyEngine.deleteRule(ruleId);
+
+      if (!result.success) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: result.message
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Rule deleted successfully',
+        config: policyEngine.getConfig()
+      });
+
+    } catch (error) {
+      logger.error('[PolicyRoutes] Delete rule error', {
+        error: error.message
+      });
+
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });
+
   return router;
 };
 

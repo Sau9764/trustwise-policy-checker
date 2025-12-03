@@ -87,8 +87,37 @@ export const validatePolicy = async (policy) => {
 };
 
 /**
- * Get available evaluation strategies
+ * Add a new rule to the policy
+ * @param {Object} rule - Rule object with id, description, judge_prompt, on_fail, weight
  */
+export const addRule = async (rule) => {
+  return apiFetch('/api/policy/rules', {
+    method: 'POST',
+    body: JSON.stringify(rule),
+  });
+};
+
+/**
+ * Update an existing rule
+ * @param {string} ruleId - ID of the rule to update
+ * @param {Object} updates - Fields to update
+ */
+export const updateRule = async (ruleId, updates) => {
+  return apiFetch(`/api/policy/rules/${encodeURIComponent(ruleId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+};
+
+/**
+ * Delete a rule from the policy
+ * @param {string} ruleId - ID of the rule to delete
+ */
+export const deleteRule = async (ruleId) => {
+  return apiFetch(`/api/policy/rules/${encodeURIComponent(ruleId)}`, {
+    method: 'DELETE',
+  });
+};
 
 export default {
   fetchConfig,
@@ -96,6 +125,9 @@ export default {
   reloadConfig,
   evaluateContent,
   validatePolicy,
+  addRule,
+  updateRule,
+  deleteRule,
 };
 
 
