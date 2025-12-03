@@ -89,35 +89,6 @@ export const validatePolicy = async (policy) => {
 /**
  * Get available evaluation strategies
  */
-export const fetchStrategies = async () => {
-  return apiFetch('/api/policy/strategies');
-};
-
-/**
- * Health check
- */
-export const fetchHealth = async () => {
-  return apiFetch('/api/policy/health');
-};
-
-/**
- * Set runtime policy override
- */
-export const setRuntimePolicy = async (policy) => {
-  return apiFetch('/api/policy/runtime', {
-    method: 'POST',
-    body: JSON.stringify({ policy }),
-  });
-};
-
-/**
- * Clear runtime policy override
- */
-export const clearRuntimePolicy = async () => {
-  return apiFetch('/api/policy/runtime', {
-    method: 'DELETE',
-  });
-};
 
 export default {
   fetchConfig,
@@ -125,9 +96,6 @@ export default {
   reloadConfig,
   evaluateContent,
   validatePolicy,
-  fetchStrategies,
-  fetchHealth,
-  setRuntimePolicy,
-  clearRuntimePolicy,
 };
+
 

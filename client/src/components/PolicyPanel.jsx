@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './PolicyPanel.css';
 
-const PolicyPanel = ({ config, onConfigUpdate }) => {
+const PolicyPanel = ({ config }) => {
   const [expandedRule, setExpandedRule] = useState(null);
   
   if (!config) {
@@ -20,7 +20,7 @@ const PolicyPanel = ({ config, onConfigUpdate }) => {
     );
   }
 
-  const { policy, judge, settings } = config;
+  const { policy } = config;
 
   const getActionColor = (action) => {
     const colors = {
@@ -140,56 +140,11 @@ const PolicyPanel = ({ config, onConfigUpdate }) => {
             ))}
           </div>
         </div>
-
-        {/* Judge Configuration */}
-        <div className="judge-section">
-          <h3 className="section-title">Judge Configuration</h3>
-          <div className="judge-config">
-            <div className="config-item">
-              <span className="config-label">Model</span>
-              <span className="config-value model-tag">{judge.model}</span>
-            </div>
-            <div className="config-item">
-              <span className="config-label">Temperature</span>
-              <span className="config-value">{judge.temperature}</span>
-            </div>
-            <div className="config-item">
-              <span className="config-label">Max Tokens</span>
-              <span className="config-value">{judge.maxTokens}</span>
-            </div>
-            <div className="config-item">
-              <span className="config-label">Timeout</span>
-              <span className="config-value">{(judge.timeout / 1000).toFixed(0)}s</span>
-            </div>
-            <div className="config-item">
-              <span className="config-label">Max Retries</span>
-              <span className="config-value">{judge.maxRetries}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Settings */}
-        <div className="settings-section">
-          <h3 className="section-title">Settings</h3>
-          <div className="settings-list">
-            <div className={`setting-item ${settings.parallelEvaluation ? 'enabled' : ''}`}>
-              <span className="setting-indicator"></span>
-              <span className="setting-label">Parallel Evaluation</span>
-            </div>
-            <div className={`setting-item ${settings.debugLog ? 'enabled' : ''}`}>
-              <span className="setting-indicator"></span>
-              <span className="setting-label">Debug Logging</span>
-            </div>
-            <div className={`setting-item ${settings.cacheResults ? 'enabled' : ''}`}>
-              <span className="setting-indicator"></span>
-              <span className="setting-label">Cache Results</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
 };
 
 export default PolicyPanel;
+
 

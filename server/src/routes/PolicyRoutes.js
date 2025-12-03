@@ -232,113 +232,11 @@ const createPolicyRoutes = (policyEngine, options = {}) => {
     }
   });
 
-  /**
-   * GET /api/policy/strategies
-   * Get available evaluation strategies
-   */
-  router.get('/strategies', (req, res) => {
-    try {
-      const strategies = policyEngine.getAvailableStrategies();
-      res.json({
-        strategies,
-        descriptions: {
-          all: 'All rules must pass for content to be allowed',
-          any: 'At least one rule must pass for content to be allowed',
-          weighted_threshold: 'Weighted sum of passed rules must exceed threshold'
-        }
-      });
-    } catch (error) {
-      logger.error('[PolicyRoutes] Get strategies error', {
-        error: error.message
-      });
-
-      res.status(500).json({
-        error: 'Internal Server Error',
-        message: error.message
-      });
-    }
-  });
-
-  /**
-   * POST /api/policy/runtime
-   * Set a runtime policy override (temporary, not saved to file)
-   */
-  router.post('/runtime', (req, res) => {
-    try {
-      const { policy } = req.body;
-
-      if (!policy) {
-        return res.status(400).json({
-          error: 'Bad Request',
-          message: 'policy object is required'
-        });
-      }
-
-      const validation = policyEngine.validatePolicy(policy);
-      if (!validation.valid) {
-        return res.status(400).json({
-          error: 'Invalid Policy',
-          message: 'Policy configuration is invalid',
-          errors: validation.errors,
-          warnings: validation.warnings
-        });
-      }
-
-      logger.info('[PolicyRoutes] Setting runtime policy', {
-        policyName: policy.name
-      });
-
-      policyEngine.setRuntimePolicy(policy);
-
-      res.json({
-        success: true,
-        message: 'Runtime policy set',
-        policy: policy
-      });
-
-    } catch (error) {
-      logger.error('[PolicyRoutes] Set runtime policy error', {
-        error: error.message
-      });
-
-      res.status(500).json({
-        error: 'Internal Server Error',
-        message: error.message
-      });
-    }
-  });
-
-  /**
-   * DELETE /api/policy/runtime
-   * Clear runtime policy override (revert to config)
-   */
-  router.delete('/runtime', (req, res) => {
-    try {
-      logger.info('[PolicyRoutes] Clearing runtime policy');
-
-      policyEngine.clearRuntimePolicy();
-
-      res.json({
-        success: true,
-        message: 'Runtime policy cleared, using config policy'
-      });
-
-    } catch (error) {
-      logger.error('[PolicyRoutes] Clear runtime policy error', {
-        error: error.message
-      });
-
-      res.status(500).json({
-        error: 'Internal Server Error',
-        message: error.message
-      });
-    }
-  });
-
   return router;
 };
 
 module.exports = {
   createPolicyRoutes
 };
+
 

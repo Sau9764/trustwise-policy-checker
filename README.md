@@ -16,7 +16,7 @@ A configurable content moderation system that evaluates requests against rules u
 - **Flexible Actions**: `allow`, `block`, `warn`, or `redact` based on rule outcomes
 - **Professional UI**: Modern dark-themed interface for policy management and content evaluation
 - **Real-time Evaluation**: Instant feedback with detailed verdict breakdown
-- **Runtime Policy Overrides**: Test different policies without permanent changes
+- **Reloadable Configuration**: Apply policy file changes without restarting the server
 
 ## 🏗️ Project Structure
 
@@ -155,14 +155,14 @@ Content-Type: application/json
 }
 ```
 
-### Get Available Strategies
-```http
-GET /api/policy/strategies
-```
-
 ### Health Check
 ```http
 GET /api/policy/health
+```
+
+### Reload Policy Configuration
+```http
+POST /api/policy/config/reload
 ```
 
 ## 📋 Policy Configuration

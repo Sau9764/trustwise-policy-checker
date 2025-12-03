@@ -192,3 +192,4 @@ const ResultsPanel = ({ result }) => {
 
 export default ResultsPanel;
 
+

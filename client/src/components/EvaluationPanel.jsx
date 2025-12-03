@@ -33,14 +33,6 @@ const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
     onEvaluate(content, options);
   };
 
-  const handleRuleToggle = (ruleId) => {
-    setSelectedRules(prev => 
-      prev.includes(ruleId)
-        ? prev.filter(id => id !== ruleId)
-        : [...prev, ruleId]
-    );
-  };
-
   const clearForm = () => {
     setContent('');
     setUseCustomPolicy(false);
@@ -109,91 +101,6 @@ const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
             ))}
           </div>
 
-          {/* Custom Policy Options */}
-          <div className="options-section">
-            <h3 className="options-title">Evaluation Options</h3>
-            
-            <div className="checkbox-group">
-              <input
-                type="checkbox"
-                id="useCustomPolicy"
-                className="checkbox-input"
-                checked={useCustomPolicy}
-                onChange={(e) => setUseCustomPolicy(e.target.checked)}
-              />
-              <label htmlFor="useCustomPolicy" className="checkbox-label">
-                Customize evaluation settings
-              </label>
-            </div>
-
-            {useCustomPolicy && (
-              <div className="custom-options fade-in">
-                {/* Strategy Selection */}
-                <div className="form-group">
-                  <label className="form-label">Evaluation Strategy</label>
-                  <select
-                    className="form-select"
-                    value={customStrategy}
-                    onChange={(e) => setCustomStrategy(e.target.value)}
-                  >
-                    <option value="all">All Rules Must Pass</option>
-                    <option value="any">At Least One Rule Must Pass</option>
-                    <option value="weighted_threshold">Weighted Threshold</option>
-                  </select>
-                </div>
-
-                {/* Threshold (for weighted strategy) */}
-                {customStrategy === 'weighted_threshold' && (
-                  <div className="form-group">
-                    <label className="form-label">
-                      Threshold: {(customThreshold * 100).toFixed(0)}%
-                    </label>
-                    <input
-                      type="range"
-                      className="form-range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={customThreshold}
-                      onChange={(e) => setCustomThreshold(parseFloat(e.target.value))}
-                    />
-                    <div className="range-labels">
-                      <span>0%</span>
-                      <span>100%</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Rule Selection */}
-                {config?.policy?.rules && (
-                  <div className="form-group">
-                    <label className="form-label">
-                      Active Rules {selectedRules.length > 0 && `(${selectedRules.length} selected)`}
-                    </label>
-                    <div className="rules-checkboxes">
-                      {config.policy.rules.map((rule) => (
-                        <label key={rule.id} className="rule-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={selectedRules.length === 0 || selectedRules.includes(rule.id)}
-                            onChange={() => handleRuleToggle(rule.id)}
-                          />
-                          <span className="rule-checkbox-label">
-                            <span className="rule-checkbox-id">{rule.id}</span>
-                            <span className="rule-checkbox-desc">{rule.description}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                    {selectedRules.length === 0 && (
-                      <p className="form-hint">All rules will be evaluated</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
           {/* Action Buttons */}
           <div className="form-actions">
             <button
@@ -228,4 +135,5 @@ const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
 };
 
 export default EvaluationPanel;
+
 

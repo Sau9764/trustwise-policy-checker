@@ -36,10 +36,7 @@ app.get('/', (req, res) => {
       updateConfig: 'POST /api/policy/config',
       reloadConfig: 'POST /api/policy/config/reload',
       health: 'GET /api/policy/health',
-      validate: 'POST /api/policy/validate',
-      strategies: 'GET /api/policy/strategies',
-      setRuntime: 'POST /api/policy/runtime',
-      clearRuntime: 'DELETE /api/policy/runtime'
+      validate: 'POST /api/policy/validate'
     },
     documentation: '/api/docs'
   });
@@ -102,24 +99,6 @@ app.get('/api/docs', (req, res) => {
           policy: 'object (required) - Policy to validate'
         }
       },
-      {
-        method: 'GET',
-        path: '/api/policy/strategies',
-        description: 'Get available evaluation strategies'
-      },
-      {
-        method: 'POST',
-        path: '/api/policy/runtime',
-        description: 'Set a runtime policy override (temporary)',
-        body: {
-          policy: 'object (required) - Policy to use at runtime'
-        }
-      },
-      {
-        method: 'DELETE',
-        path: '/api/policy/runtime',
-        description: 'Clear runtime policy override (revert to config)'
-      }
     ],
     evaluationStrategies: {
       all: 'All rules must pass for content to be allowed',
@@ -184,4 +163,5 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
 
