@@ -81,6 +81,38 @@ if (status === 429 || message.includes('rate limit')) {
 - Respects `Retry-After` header
 - Exponential backoff on subsequent hits
 
+### API rate limiting (IP-based)
+
+Incoming requests to the API are limited **per client IP** to protect the server and downstream LLM from abuse.
+
+| Aspect | Detail |
+|--------|--------|
+| **Scope** | All routes under `/api` (policy and history) |
+| **Key** | Client IP (`req.ip`; set `TRUST_PROXY=1` when behind a reverse proxy so the real client IP is used) |
+| **Window** | Configurable via `RATE_LIMIT_WINDOW_MS` (default: 60 000 ms = 1 minute) |
+| **Limit** | Configurable via `RATE_LIMIT_MAX_PER_WINDOW` (default: 60 requests per IP per window) |
+| **Response** | HTTP 429 Too Many Requests with a JSON body and `Retry-After`-style information |
+
+**Configuration (env):**
+
+```bash
+# Optional overrides (defaults shown)
+RATE_LIMIT_WINDOW_MS=60000      # Window length in milliseconds
+RATE_LIMIT_MAX_PER_WINDOW=60     # Max requests per IP per window
+TRUST_PROXY=0                   # Set to 1 or true behind nginx/load balancer for correct client IP
+```
+
+**Implementation:** `server/src/middleware/rateLimiter.ts` using `express-rate-limit`; applied in `server/src/index.ts` with `app.use('/api', apiRateLimiter)`.
+
+### Rate limiting pointers (summary)
+
+| Layer | What is limited | Where documented / implemented |
+|-------|------------------|---------------------------------|
+| **API (incoming)** | Requests per client IP to `/api/*` | This section; `server/src/middleware/rateLimiter.ts`, `server/src/index.ts` |
+| **Downstream (LLM)** | Handling of provider 429 (e.g. OpenAI); retries and backoff | [Rate Limit Handling](#rate-limit-handling) above; `server/src/services/JudgeService.ts` |
+
+For production at scale, consider a shared store (e.g. Redis) for the API rate limiter so limits are consistent across multiple server instances (see [Future Scalability Enhancements](#future-scalability-enhancements)).
+
 ### Transient Failure Handling
 
 Retry logic with exponential backoff and jitter:

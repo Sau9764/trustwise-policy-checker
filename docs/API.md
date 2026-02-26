@@ -26,6 +26,25 @@ Currently, Trustwise does not require authentication for API endpoints. For prod
 
 ---
 
+## Rate limiting
+
+API requests are **rate-limited by client IP**. All endpoints under `/api` share the same limit.
+
+- **Default:** 60 requests per IP per 1-minute window.
+- **When exceeded:** the server responds with **429 Too Many Requests** and a JSON body, e.g.:
+
+```json
+{
+  "error": "Too Many Requests",
+  "message": "Rate limit exceeded. Maximum 60 requests per 60 seconds per IP.",
+  "retryAfter": 60
+}
+```
+
+**Configuration:** See [API rate limiting (IP-based)](NON_FUNCTIONAL_REQUIREMENTS.md#api-rate-limiting-ip-based) in Non-Functional Requirements. Use `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX_PER_WINDOW` to tune; set `TRUST_PROXY=1` when behind a reverse proxy so the client IP is correct.
+
+---
+
 ## Evaluation Endpoints
 
 ### Evaluate Content
@@ -685,6 +704,7 @@ GET /api/docs
 | 200 | Success |
 | 400 | Bad Request - Invalid input |
 | 404 | Not Found - Resource doesn't exist |
+| 429 | Too Many Requests - API rate limit exceeded (per-IP; see [Rate limiting](#rate-limiting)) |
 | 500 | Internal Server Error |
 | 503 | Service Unavailable - Health check failed |
 

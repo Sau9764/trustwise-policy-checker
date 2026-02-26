@@ -20,8 +20,14 @@ import swaggerUi from 'swagger-ui-express';
 import { initialize } from './engine';
 import { connectDatabase, getDatabaseStatus } from './config/database';
 import { swaggerSpec } from './config/swagger';
+import { apiRateLimiter } from './middleware/rateLimiter';
 
 const app: Application = express();
+
+// Trust proxy so req.ip is correct when behind a reverse proxy (e.g. nginx, load balancer)
+if (process.env['TRUST_PROXY'] === '1' || process.env['TRUST_PROXY'] === 'true') {
+  app.set('trust proxy', 1);
+}
 
 // Middleware - CORS configuration
 const allowedOrigins: string[] = [
@@ -49,6 +55,9 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// IP-based rate limiting for /api (applied before API routes)
+app.use('/api', apiRateLimiter);
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
