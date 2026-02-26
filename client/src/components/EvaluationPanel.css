@@ -33,6 +33,14 @@
   padding: 1.25rem;
 }
 
+.evaluation-panel-centered .panel-content {
+  padding: 1.5rem;
+}
+
+.evaluation-panel-centered .form-textarea {
+  min-height: 200px;
+}
+
 /* Form Styles */
 .form-group {
   margin-bottom: 1.25rem;

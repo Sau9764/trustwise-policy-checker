@@ -137,6 +137,10 @@ app.get('/health', async (req, res) => {
 const PORT = process.env.PORT || 3002;
 
 app.listen(PORT, () => {
+  
+  console.log('process.env', process.env);
+
+
   const openaiConfigured = !!process.env.OPENAI_API_KEY;
   
   console.log(`

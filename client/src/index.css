@@ -6,14 +6,20 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: dark;
-  color: #f0f6fc;
-  background-color: #0d1117;
+  color-scheme: light;
+  color: #1a1a1a;
+  background-color: #ffffff;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  color: #f0f6fc;
+  background-color: #0d1117;
 }
 
 * {
@@ -28,11 +34,19 @@ html, body, #root {
 
 a {
   font-weight: 500;
-  color: #58a6ff;
+  color: #2563eb;
   text-decoration: inherit;
 }
 
 a:hover {
+  color: #3b82f6;
+}
+
+[data-theme="dark"] a {
+  color: #58a6ff;
+}
+
+[data-theme="dark"] a:hover {
   color: #79c0ff;
 }
 

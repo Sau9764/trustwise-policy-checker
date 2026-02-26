@@ -7,7 +7,13 @@
  * All configuration and history is stored in MongoDB.
  */
 
-import 'dotenv/config';
+import path from 'path';
+import dotenv from 'dotenv';
+
+// Load .env from project root first (when running via npm run dev:server, cwd is server/)
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
+// Then load server/.env so local overrides work
+dotenv.config();
 import express, { Request, Response, Application } from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
@@ -20,11 +26,6 @@ const app: Application = express();
 // Middleware - CORS configuration
 const allowedOrigins: string[] = [
   'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:5175',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-  'http://127.0.0.1:5175',
 ];
 
 if (process.env['CLIENT_URL']) {

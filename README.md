@@ -70,7 +70,7 @@ docker-compose up -d
 npm install && npm run install:all
 
 # Configure environment
-cp env.example .env
+cp env.example server/.env
 # Edit .env with your OPENAI_API_KEY
 
 # Start MongoDB
@@ -103,7 +103,6 @@ npm run dev
 | `npm run dev:client` | Start frontend only |
 | `npm test` | Run tests |
 | `npm run build` | Build for production |
-| `docker-compose up -d` | Start with Docker |
 
 ---
 

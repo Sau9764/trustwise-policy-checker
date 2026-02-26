@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import Header from './components/Header';
-import PolicyPanel from './components/PolicyPanel';
 import EvaluationPanel from './components/EvaluationPanel';
 import ResultsPanel from './components/ResultsPanel';
 import HistoryPanel from './components/HistoryPanel';
+import SettingsDrawer from './components/SettingsDrawer';
 import { fetchConfig, evaluateContent } from './services/api';
 import './App.css';
 
@@ -13,7 +13,8 @@ const App = () => {
   const [error, setError] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [evaluating, setEvaluating] = useState(false);
-  const [activeTab, setActiveTab] = useState('evaluate'); // 'evaluate' or 'history'
+  const [activeTab, setActiveTab] = useState('evaluate');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -37,7 +38,6 @@ const App = () => {
     try {
       setEvaluating(true);
       setEvaluationResult(null);
-      
       const policy = options.customPolicy || null;
       const result = await evaluateContent(content, policy);
       setEvaluationResult(result);
@@ -54,13 +54,13 @@ const App = () => {
 
   const handleRerunResult = (result) => {
     setEvaluationResult(result);
-    setActiveTab('evaluate'); // Switch to evaluate tab to show results
+    setActiveTab('evaluate');
   };
 
   if (loading) {
     return (
       <div className="app-container">
-        <Header />
+        <Header onOpenSettings={() => setSettingsOpen(true)} />
         <div className="loading-state">
           <div className="loading-spinner"></div>
           <p>Loading policy configuration...</p>
@@ -72,7 +72,7 @@ const App = () => {
   if (error) {
     return (
       <div className="app-container">
-        <Header />
+        <Header onOpenSettings={() => setSettingsOpen(true)} />
         <div className="error-state">
           <div className="error-icon">⚠</div>
           <h2>Connection Error</h2>
@@ -90,9 +90,8 @@ const App = () => {
 
   return (
     <div className="app-container">
-      <Header />
+      <Header onOpenSettings={() => setSettingsOpen(true)} />
       <main className="main-content">
-        {/* Tab Navigation */}
         <div className="tab-navigation">
           <button
             className={`tab-btn ${activeTab === 'evaluate' ? 'active' : ''}`}
@@ -110,23 +109,15 @@ const App = () => {
           </button>
         </div>
 
-        {/* Content Based on Active Tab */}
         {activeTab === 'evaluate' ? (
-          <div className="panel-container">
-            {/* Column 1: Policy Configuration */}
-            <section className="panel policy-section">
-              <PolicyPanel config={config} onConfigUpdate={loadConfig} />
-            </section>
-
-            {/* Column 2: Evaluation & Results */}
-            <section className="panel evaluation-section">
-              <EvaluationPanel 
-                config={config}
+          <div className="evaluate-layout">
+            <div className="evaluate-center">
+              <EvaluationPanel
                 onEvaluate={handleEvaluate}
                 evaluating={evaluating}
               />
               <ResultsPanel result={evaluationResult} />
-            </section>
+            </div>
           </div>
         ) : (
           <div className="history-container">
@@ -134,6 +125,13 @@ const App = () => {
           </div>
         )}
       </main>
+
+      <SettingsDrawer
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        config={config}
+        onConfigUpdate={loadConfig}
+      />
     </div>
   );
 };

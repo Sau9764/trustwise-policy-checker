@@ -1,44 +1,17 @@
 import { useState } from 'react';
 import './EvaluationPanel.css';
 
-const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
+const EvaluationPanel = ({ onEvaluate, evaluating }) => {
   const [content, setContent] = useState('');
-  const [useCustomPolicy, setUseCustomPolicy] = useState(false);
-  const [customStrategy, setCustomStrategy] = useState('all');
-  const [customThreshold, setCustomThreshold] = useState(0.7);
-  const [selectedRules, setSelectedRules] = useState([]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
     if (!content.trim()) return;
-
-    const options = {
-      useCustomPolicy,
-    };
-
-    if (useCustomPolicy && config?.policy) {
-      const activeRules = selectedRules.length > 0 
-        ? config.policy.rules.filter(r => selectedRules.includes(r.id))
-        : config.policy.rules;
-
-      options.customPolicy = {
-        ...config.policy,
-        rules: activeRules,
-        evaluation_strategy: customStrategy,
-        threshold: customThreshold,
-      };
-    }
-
-    onEvaluate(content, options);
+    onEvaluate(content, {});
   };
 
   const clearForm = () => {
     setContent('');
-    setUseCustomPolicy(false);
-    setSelectedRules([]);
-    setCustomStrategy('all');
-    setCustomThreshold(0.7);
   };
 
   const sampleContents = [
@@ -61,32 +34,25 @@ const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
   ];
 
   return (
-    <div className="panel evaluation-panel">
-      <div className="panel-header">
-        <h2 className="panel-title">
-          <span className="panel-title-icon">🔍</span>
-          Content Evaluation
-        </h2>
-      </div>
-      
+    <div className="panel evaluation-panel evaluation-panel-centered">
       <div className="panel-content">
         <form onSubmit={handleSubmit}>
-          {/* Content Input */}
           <div className="form-group">
-            <label className="form-label">Content to Evaluate</label>
+            <label className="form-label" htmlFor="eval-content">Content to Evaluate</label>
             <textarea
+              id="eval-content"
               className="form-textarea"
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Enter the content you want to evaluate against the policy rules..."
-              rows={8}
+              rows={10}
+              aria-describedby="char-count"
             />
-            <div className="char-count">
+            <div id="char-count" className="char-count">
               {content.length} characters
             </div>
           </div>
 
-          {/* Sample Content Buttons */}
           <div className="sample-buttons">
             <span className="sample-label">Quick Fill:</span>
             {sampleContents.map((sample, index) => (
@@ -101,7 +67,6 @@ const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
             ))}
           </div>
 
-          {/* Action Buttons */}
           <div className="form-actions">
             <button
               type="button"
@@ -117,12 +82,12 @@ const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
             >
               {evaluating ? (
                 <>
-                  <span className="loader-sm"></span>
+                  <span className="loader-sm" aria-hidden></span>
                   Evaluating...
                 </>
               ) : (
                 <>
-                  <span>⚡</span>
+                  <span aria-hidden>⚡</span>
                   Evaluate Content
                 </>
               )}
@@ -135,5 +100,3 @@ const EvaluationPanel = ({ config, onEvaluate, evaluating }) => {
 };
 
 export default EvaluationPanel;
-
-
